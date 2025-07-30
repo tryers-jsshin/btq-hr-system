@@ -5,12 +5,12 @@ import { hashPassword, isPasswordHashed } from "./password-utils"
 type Member = Database["public"]["Tables"]["members"]["Row"]
 
 export const supabaseAuthStorage = {
-  async login(employeeId: string, password: string): Promise<{ success: boolean; user?: Member; message: string }> {
+  async login(email: string, password: string): Promise<{ success: boolean; user?: Member; message: string }> {
     try {
-      const { data, error } = await supabase.from("members").select("*").eq("employee_id", employeeId).single()
+      const { data, error } = await supabase.from("members").select("*").eq("email", email).single()
 
       if (error || !data) {
-        return { success: false, message: "사원번호 또는 비밀번호가 올바르지 않습니다." }
+        return { success: false, message: "이메일 또는 비밀번호가 올바르지 않습니다." }
       }
 
       // 입력된 비밀번호 해시화
@@ -34,7 +34,7 @@ export const supabaseAuthStorage = {
       }
 
       if (!isPasswordValid) {
-        return { success: false, message: "사원번호 또는 비밀번호가 올바르지 않습니다." }
+        return { success: false, message: "이메일 또는 비밀번호가 올바르지 않습니다." }
       }
 
       // 로그인 성공
@@ -46,6 +46,16 @@ export const supabaseAuthStorage = {
     } catch (error) {
       console.error("로그인 오류:", error)
       return { success: false, message: "로그인 중 오류가 발생했습니다." }
+    }
+  },
+
+  async isLoggedIn(): Promise<boolean> {
+    try {
+      const user = await this.getCurrentUser()
+      return user !== null
+    } catch (error) {
+      console.error("로그인 상태 확인 오류:", error)
+      return false
     }
   },
 
