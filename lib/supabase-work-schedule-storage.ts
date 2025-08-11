@@ -124,9 +124,9 @@ export const supabaseWorkScheduleStorage = {
               }
             }
 
-            // 연차인 경우 편집 불가 (deduction_days가 있는 휴가 유형)
+            // 연차인 경우 편집 불가 (is_leave가 true인 휴가 유형)
             const workType = workTypes.find((wt) => wt.id === workTypeId)
-            const isLeaveSchedule = workType && workType.deduction_days !== null && workType.deduction_days !== undefined
+            const isLeaveSchedule = workType && workType.is_leave === true
             
             dailySchedules.push({
               date: dateStr,
@@ -275,11 +275,11 @@ export const supabaseWorkScheduleStorage = {
         return {created: 0, skippedLeave: 0}
       }
 
-      // 연차 근무 유형들 조회 (보호할 근무 유형들) - deduction_days가 있는 휴가 유형
+      // 연차 근무 유형들 조회 (보호할 근무 유형들) - is_leave가 true인 휴가 유형
       const { data: leaveWorkTypes } = await supabase
         .from("work_types")
         .select("id")
-        .not("deduction_days", "is", null)
+        .eq("is_leave", true)
 
       const leaveWorkTypeIds = leaveWorkTypes?.map(wt => wt.id) || []
 
@@ -424,11 +424,11 @@ export const supabaseWorkScheduleStorage = {
         return {deleted: 0, protectedLeave: 0}
       }
 
-      // 연차 근무 유형들 조회 (보호할 근무 유형들) - deduction_days가 있는 휴가 유형
+      // 연차 근무 유형들 조회 (보호할 근무 유형들) - is_leave가 true인 휴가 유형
       const { data: leaveWorkTypes } = await supabase
         .from("work_types")
         .select("id")
-        .not("deduction_days", "is", null)
+        .eq("is_leave", true)
 
       const leaveWorkTypeIds = leaveWorkTypes?.map(wt => wt.id) || []
 

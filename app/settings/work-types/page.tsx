@@ -29,9 +29,9 @@ export default function WorkTypesPage() {
       setLoading(true)
       const data = await supabaseWorkTypeStorage.getWorkTypes()
       
-      // 휴가 유형과 일반 근무 유형 분리 (deduction_days 기준)
-      const leaveTypesList = data.filter(wt => wt.deduction_days !== null && wt.deduction_days !== undefined)
-      const regularTypes = data.filter(wt => wt.deduction_days === null || wt.deduction_days === undefined)
+      // 휴가 유형과 일반 근무 유형 분리 (is_leave 기준)
+      const leaveTypesList = data.filter(wt => wt.is_leave === true)
+      const regularTypes = data.filter(wt => wt.is_leave !== true)
       
       setLeaveTypes(leaveTypesList)
       setWorkTypes(regularTypes)

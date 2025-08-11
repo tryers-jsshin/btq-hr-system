@@ -23,7 +23,8 @@ export const supabaseWorkTypeStorage = {
           end_time: workType.end_time,
           bgcolor: workType.bgcolor,
           fontcolor: workType.fontcolor,
-          deduction_days: workType.deduction_days || null,
+          is_leave: workType.is_leave || false,
+          deduction_days: workType.deduction_days !== undefined ? workType.deduction_days : null,
         },
       ])
       .select()
@@ -49,7 +50,8 @@ export const supabaseWorkTypeStorage = {
         end_time: workType.end_time,
         bgcolor: workType.bgcolor,
         fontcolor: workType.fontcolor,
-        deduction_days: workType.deduction_days !== undefined ? (workType.deduction_days || null) : undefined,
+        is_leave: workType.is_leave,
+        deduction_days: workType.deduction_days !== undefined ? workType.deduction_days : undefined,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

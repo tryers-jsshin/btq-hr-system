@@ -763,14 +763,91 @@ export class AnnualLeavePolicyEngine {
 
       if (remainingAmount > 0) {
         // 소멸 실행
-        const reason = "연차 유효기간 만료 (소급 적용)"
+        const reason = "연차 유효기간 만료"
         console.log(
           `  - ${grant.grant_date} 부여 연차 소멸: ${remainingAmount}일 (소멸일: ${expireDate.toISOString().split("T")[0]})`,
         )
 
-        // 원본 부여 트랜잭션에 expired 마킹
-        await supabaseAnnualLeaveStorageV2.expireGrantTransaction(grant.id, "SYSTEM")
-        console.log(`  - 부여 ID ${grant.id} 소멸 처리 (잔여: ${remainingAmount}일)`)
+        if (usedAmount > 0) {
+          // 일부 사용된 경우: 부여 분할 처리
+          console.log(`  - 부여 분할 처리: 사용 ${usedAmount}일은 유지, 미사용 ${remainingAmount}일만 소멸`)
+          
+          // 1. 원본 부여를 cancelled로 변경
+          await supabaseAnnualLeaveStorageV2.cancelTransaction(grant.id, "SYSTEM")
+          
+          // 2. 사용된 만큼만 새로운 부여 생성 (소멸되지 않는 부분)
+          await supabaseAnnualLeaveStorageV2.createTransaction({
+            member_id: grant.member_id,
+            member_name: grant.member_name,
+            transaction_type: grant.transaction_type,
+            amount: usedAmount,
+            reason: `${grant.reason} (사용분 보존)`,
+            grant_date: grant.grant_date,
+            expire_date: grant.expire_date,
+            created_by: "SYSTEM",
+          })
+          
+          // 3. 잔여량에 대한 소멸 처리 (별도 부여로 생성 후 즉시 소멸)
+          await supabaseAnnualLeaveStorageV2.createTransaction({
+            member_id: grant.member_id,
+            member_name: grant.member_name,
+            transaction_type: grant.transaction_type,
+            amount: remainingAmount,
+            reason: `${grant.reason} (소멸분)`,
+            grant_date: grant.grant_date,
+            expire_date: grant.expire_date,
+            created_by: "SYSTEM",
+          })
+          
+          // 4. 소멸분 부여 찾아서 expired 마킹
+          const { supabase } = await import("./supabase")
+          const { data: expiredGrant } = await supabase
+            .from("annual_leave_transactions")
+            .select("id")
+            .eq("member_id", grant.member_id)
+            .eq("amount", remainingAmount)
+            .eq("reason", `${grant.reason} (소멸분)`)
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single()
+          
+          if (expiredGrant) {
+            await supabaseAnnualLeaveStorageV2.expireGrantTransaction(expiredGrant.id, "SYSTEM")
+          }
+          
+          // 5. 사용 내역들을 새 부여로 재연결
+          const newGrantResult = await supabase
+            .from("annual_leave_transactions")
+            .select("id")
+            .eq("member_id", grant.member_id)
+            .eq("amount", usedAmount)
+            .eq("reason", `${grant.reason} (사용분 보존)`)
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single()
+          
+          if (newGrantResult.data) {
+            // 기존 사용 내역의 reference_id 업데이트
+            const usages = transactions.filter(t => 
+              t.reference_id === grant.id && 
+              t.transaction_type === "use" &&
+              t.status !== "cancelled"
+            )
+            
+            for (const usage of usages) {
+              await supabase
+                .from("annual_leave_transactions")
+                .update({ reference_id: newGrantResult.data.id })
+                .eq("id", usage.id)
+            }
+          }
+        } else {
+          // 전혀 사용되지 않은 경우: 전체 소멸
+          await supabaseAnnualLeaveStorageV2.expireGrantTransaction(grant.id, "SYSTEM")
+          console.log(`  - 부여 ID ${grant.id} 전체 소멸 처리`)
+        }
       }
     }
 

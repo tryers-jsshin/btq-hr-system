@@ -1,4 +1,5 @@
-export type LeaveType = "연차" | "오전반차" | "오후반차"
+// 휴가 유형은 work_types 테이블에서 동적으로 가져오므로 string으로 설정
+export type LeaveType = string
 
 export type LeaveRequestStatus = "대기중" | "승인됨" | "반려됨" | "취소됨"
 
@@ -7,7 +8,7 @@ export interface LeaveRequest {
   member_id: string
   member_name: string
   team_name: string | null
-  leave_type: LeaveType
+  leave_type: string
   start_date: string
   end_date: string
   total_days: number
@@ -28,7 +29,7 @@ export interface LeaveRequestInsert {
   member_id: string
   member_name: string
   team_name?: string | null
-  leave_type: LeaveType
+  leave_type: string
   start_date: string
   end_date: string
   total_days: number
@@ -49,7 +50,7 @@ export interface LeaveRequestUpdate {
   member_id?: string
   member_name?: string
   team_name?: string | null
-  leave_type?: LeaveType
+  leave_type?: string
   start_date?: string
   end_date?: string
   total_days?: number

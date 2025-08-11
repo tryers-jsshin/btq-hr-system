@@ -432,15 +432,35 @@ export default function WorkScheduleManage() {
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            {changes.length}개의 변경사항이 있습니다. 저장 버튼을 클릭하여 적용하세요.
-            <div className="mt-2 space-y-1">
-              {changes.slice(0, 3).map((change, index) => (
-                <div key={index} className="text-sm">
-                  • {change.memberName} - {change.dayName}: {getWorkTypeName(change.oldWorkTypeId)} →{" "}
-                  {getWorkTypeName(change.newWorkTypeId)}
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                {changes.length}개의 변경사항이 있습니다.
+                <div className="mt-2 space-y-1">
+                  {changes.slice(0, 3).map((change, index) => (
+                    <div key={index} className="text-sm">
+                      • {change.memberName} - {change.dayName}: {getWorkTypeName(change.oldWorkTypeId)} →{" "}
+                      {getWorkTypeName(change.newWorkTypeId)}
+                    </div>
+                  ))}
+                  {changes.length > 3 && <div className="text-sm text-gray-500">외 {changes.length - 3}개...</div>}
                 </div>
-              ))}
-              {changes.length > 3 && <div className="text-sm text-gray-500">외 {changes.length - 3}개...</div>}
+              </div>
+              <div className="flex gap-2 ml-4">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancelChanges}
+                >
+                  취소
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveChanges}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  저장
+                </Button>
+              </div>
             </div>
           </AlertDescription>
         </Alert>

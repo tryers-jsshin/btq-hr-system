@@ -32,6 +32,7 @@ export interface Database {
           end_time: string
           bgcolor: string
           fontcolor: string
+          is_leave: boolean
           deduction_days: number | null
           created_at: string
           updated_at: string
@@ -43,6 +44,7 @@ export interface Database {
           end_time: string
           bgcolor?: string
           fontcolor?: string
+          is_leave?: boolean
           deduction_days?: number | null
           created_at?: string
           updated_at?: string
@@ -54,6 +56,7 @@ export interface Database {
           end_time?: string
           bgcolor?: string
           fontcolor?: string
+          is_leave?: boolean
           deduction_days?: number | null
           created_at?: string
           updated_at?: string

@@ -64,8 +64,8 @@ export class AnnualLeaveFIFOV2 {
         transaction_type: "use",
         amount: -allocation.amount, // 음수로 저장
         reason: `${leaveType} 사용 (${startDate}~${endDate})`,
-        grant_date: grant.grant_date,
-        expire_date: grant.expire_date,
+        grant_date: null, // use 트랜잭션은 부여일 불필요
+        expire_date: null, // use 트랜잭션은 만료일 불필요
         reference_id: grant.id, // 부여 ID 참조
         created_by: createdBy,
       })

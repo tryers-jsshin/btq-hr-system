@@ -120,7 +120,10 @@ export function WorkTypeFormDialog({ open, onOpenChange, workType, onSave, isLea
     if (!validateForm()) return
 
     // 제출 데이터 준비
-    let submitData = { ...formData }
+    let submitData: any = { ...formData }
+    
+    // is_leave 필드 설정
+    submitData.is_leave = isLeaveType
     
     // 휴가 유형이면서 종일인 경우 시간을 기본값으로 설정
     if (isLeaveType && isFullDay) {

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CalendarDays, Clock, FileText, CheckCircle, XCircle, Users } from "lucide-react"
+import { CalendarDays, Clock, FileText, CheckCircle, XCircle, Users, X } from "lucide-react"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
 import { supabaseLeaveRequestStorage } from "@/lib/supabase-leave-request-storage"
@@ -20,10 +20,19 @@ const statusColors = {
   "취소됨": "bg-gray-100 text-gray-800",
 }
 
-const leaveTypeColors = {
-  "연차": "bg-blue-100 text-blue-800",
-  "오전반차": "bg-purple-100 text-purple-800",
-  "오후반차": "bg-indigo-100 text-indigo-800",
+// 휴가 유형별 색상 - 동적으로 처리
+const getLeaveTypeColor = (leaveType: string) => {
+  // 기본 색상 맵
+  const colorMap: Record<string, string> = {
+    "연차": "bg-blue-100 text-blue-800",
+    "오전반차": "bg-purple-100 text-purple-800",
+    "오후반차": "bg-indigo-100 text-indigo-800",
+    "특별 휴가": "bg-green-100 text-green-800",
+    "병가": "bg-red-100 text-red-800",
+    "경조휴가": "bg-gray-100 text-gray-800",
+  }
+  // 정의되지 않은 휴가 유형은 기본 색상 사용
+  return colorMap[leaveType] || "bg-orange-100 text-orange-800"
 }
 
 export default function LeaveApprovalPage() {
@@ -90,6 +99,34 @@ export default function LeaveApprovalPage() {
 
   const canTakeAction = (request: LeaveRequest): boolean => {
     return request.status === "대기중"
+  }
+  
+  const canCancelRequest = (request: LeaveRequest): boolean => {
+    // 관리자는 승인된 연차를 취소할 수 있음
+    return request.status === "승인됨"
+  }
+  
+  const handleCancelRequest = async (requestId: string, memberName: string) => {
+    if (!currentUser) return
+    
+    if (!confirm(`${memberName}님의 연차 신청을 취소하시겠습니까?\n\n취소 시 연차가 복구되고 근무표가 원상태로 돌아갑니다.`)) return
+    
+    try {
+      const result = await supabaseLeaveRequestStorage.cancelLeaveRequest({
+        request_id: requestId,
+        cancelled_by: currentUser.name,
+      })
+      
+      // 근무표 미등록 알림이 있으면 표시
+      if (result.message) {
+        alert(result.message)
+      }
+      
+      await loadData()
+    } catch (error) {
+      console.error("연차 취소 오류:", error)
+      alert(error instanceof Error ? error.message : "연차 취소 중 오류가 발생했습니다.")
+    }
   }
 
   if (loading) {
@@ -179,7 +216,7 @@ export default function LeaveApprovalPage() {
                       <div className="flex items-start justify-between">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <Badge className={leaveTypeColors[request.leave_type]}>
+                            <Badge className={getLeaveTypeColor(request.leave_type)}>
                               {request.leave_type}
                             </Badge>
                             <Badge className={statusColors[request.status]}>
@@ -263,9 +300,10 @@ export default function LeaveApprovalPage() {
                   .map((request) => (
                     <Card key={request.id} className="border-l-4 border-l-gray-300">
                       <CardContent className="p-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Badge className={leaveTypeColors[request.leave_type]}>
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-2">
+                            <Badge className={getLeaveTypeColor(request.leave_type)}>
                               {request.leave_type}
                             </Badge>
                             <Badge className={statusColors[request.status]}>
@@ -332,7 +370,20 @@ export default function LeaveApprovalPage() {
                                 취소일: {formatDateTime(request.cancelled_at)}
                               </div>
                             )}
+                            </div>
                           </div>
+                          
+                          {canCancelRequest(request) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCancelRequest(request.id, request.member_name)}
+                              className="flex items-center gap-1 text-red-600 hover:text-red-700"
+                            >
+                              <X className="h-3 w-3" />
+                              취소
+                            </Button>
+                          )}
                         </div>
                       </CardContent>
                     </Card>

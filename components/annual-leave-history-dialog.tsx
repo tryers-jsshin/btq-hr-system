@@ -159,7 +159,7 @@ export function AnnualLeaveHistoryDialog({ open, onOpenChange, balance }: Annual
                             <div className="text-xs text-gray-500">
                               {new Date(transaction.created_at).toLocaleDateString("ko-KR")} • {transaction.created_by}
                             </div>
-                            {transaction.grant_date && (
+                            {transaction.grant_date && transaction.transaction_type !== "use" && (
                               <div className="text-xs text-gray-500">
                                 부여일: {new Date(transaction.grant_date).toLocaleDateString("ko-KR")}
                                 {transaction.expire_date && (

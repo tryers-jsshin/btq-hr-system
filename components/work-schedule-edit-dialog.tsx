@@ -40,9 +40,9 @@ export function WorkScheduleEditDialog({ open, onOpenChange, member, workTypes, 
 
   if (!member) return null
 
-  // 연차가 아닌 근무 유형만 필터링 (deduction_days가 null인 것들)
+  // 연차가 아닌 근무 유형만 필터링 (is_leave가 true가 아닌 것들)
   const regularWorkTypes = workTypes.filter(wt => 
-    wt.deduction_days === null || wt.deduction_days === undefined
+    wt.is_leave !== true
   )
 
   const formatDate = (dateString: string) => {

@@ -27,11 +27,11 @@ Next.js 15, React 19, TypeScript, Supabase로 구축된 한국어 HR 관리 시�
 - `types/database.ts`에서 타입 안전한 데이터베이스 스키마 정의:
   - `members`: 직원 정보, 상태 추적 (active/terminated/rehired), weekly_schedule (JSONB), employee_number
   - `teams`: 팀 조직 구조, member_count 자동 추적
-  - `work_types`: 근무 유형, 시간 범위 및 색상 코딩 (bgcolor/fontcolor)
-  - `work_schedule_entries`: 일별 근무 일정, members와 work_types 연결
+  - `work_types`: 근무 유형, 시간 범위 및 색상 코딩 (bgcolor/fontcolor), is_leave 플래그로 휴가 유형 구분
+  - `work_schedule_entries`: 일별 근무 일정, members와 work_types 연결, original_work_type_id와 replaced_by_leave_id로 휴가 백업/복원
   - `termination_logs`: 직원 퇴사 이력 추적, action 유형 (terminate/cancel/rehire)
   - `annual_leave_policies`: 연차 정책 설정, 첫 해 월별 부여, 연간 증분, 소멸 규칙
-  - `annual_leave_transactions`: 모든 연차 활동 거래 로그 (grant/use/expire/adjust), grant_date와 expire_date 추적
+  - `annual_leave_transactions`: 모든 연차 활동 거래 로그 (grant/use/expire/adjust), use 트랜잭션은 reference_id로 부여 참조
   - `annual_leave_balances`: 구성원별 연차 잔액 요약, 부여/사용/소멸 총계
   - `leave_requests`: 연차 신청 관리 (신청/승인/반려/취소)
 - 스토리지 패턴: `lib/supabase-[엔티티]-storage.ts` 일관된 명명 규칙
@@ -99,22 +99,23 @@ Next.js 15, React 19, TypeScript, Supabase로 구축된 한국어 HR 관리 시�
 
 ### 2. 지능형 중복 신청 방지 시스템
 
-**기존 문제 해결**:
-- 오전반차(0.5일) + 오후반차(0.5일) = 1일 조합이 "중복 기간" 오류로 차단되던 문제
-- 해결: `checkOverlappingRequests()` → `checkDailyLeaveLimit()` 완전 교체
+**현재 정책**: 
+- 동일 날짜에 여러 휴가 신청 완전 차단 (대기중/승인됨 상태 모두)
+- 오전반차 + 오후반차 조합도 불가 (단순하고 명확한 정책)
 
-**핵심 로직** (`/lib/supabase-leave-request-storage.ts:352-419`):
+**핵심 로직** (`/lib/supabase-leave-request-storage.ts:checkDailyLeaveLimit`):
 ```typescript
-// 일별 사용량 계산 시스템
-const dailyDeduction = workTypeMap.get(leaveType) || 1
-let existingTotal = 0
-for (const leave of existingLeaves || []) {
-  const existingDailyDeduction = workTypeMap.get(leave.leave_type) || 1
-  existingTotal += existingDailyDeduction
-}
-// 총 사용량이 1일 이하면 허용
-if (existingTotal + dailyDeduction > 1) {
-  return true // 차단
+// 해당 날짜에 이미 휴가가 있는지 확인
+const { data: existingLeaves } = await supabase
+  .from("leave_requests")
+  .select("leave_type, status")
+  .eq("member_id", memberId)
+  .in("status", ["대기중", "승인됨"])
+  .lte("start_date", dateStr)
+  .gte("end_date", dateStr)
+
+if (existingLeaves && existingLeaves.length > 0) {
+  return true // 차단 - 이미 휴가 신청이 있음
 }
 ```
 
@@ -275,16 +276,21 @@ if (existingTotal + dailyDeduction > 1) {
 
 ### work_types 테이블 확장 ✅
 ```sql
-+ deduction_days: DECIMAL(3,1) NULL (휴가 유형 구분 필드)
++ deduction_days: DECIMAL(3,1) NULL (휴가 차감일수, 최소 0.1)
++ is_leave: BOOLEAN DEFAULT false (휴가/근무 유형 명확한 구분)
 ```
+
+### annual_leave_transactions 정규화 ✅
+- `use` 트랜잭션은 grant_date, expire_date 불필요 (reference_id로 부여 참조)
+- 데이터 중복 제거로 일관성 향상
 
 ## ✅ 구현 완료된 비즈니스 규칙
 
 ### 신청 규칙
 1. **동적 유형 제한**: `deduction_days !== 1`인 휴가는 단일 날짜만 신청 가능
-2. **근무일 계산**: 주간 근무표 "오프" 날짜는 연차 차감에서 제외
+2. **오프일 보호**: 주간 근무표 "오프" 날짜는 휴가로 덮어쓰지 않고 원본 유지
 3. **잔여 연차 확인**: 신청/승인 시점 이중 확인
-4. **지능형 중복 방지**: 일별 총 사용량이 1일 이하면 허용
+4. **중복 방지**: 동일 날짜에 여러 휴가 신청 차단 (대기중/승인됨 모두)
 
 ### 승인 규칙
 1. **실시간 검증**: 승인 시점 잔여 연차 재확인
@@ -322,9 +328,19 @@ if (existingTotal + dailyDeduction > 1) {
 이번 구현을 통해 달성한 주요 기술적 성과:
 
 1. **확장성**: 하드코딩 제거 → 데이터베이스 기반 동적 시스템
-2. **정확성**: 단순 겹침 검사 → 지능형 일별 사용량 계산
-3. **유연성**: 고정 휴가 유형 → 무제한 휴가 유형 지원  
-4. **안정성**: 타입 안전성 + 에러 핸들링 강화
-5. **사용성**: 과거 날짜 신청 지원 + 직관적 UX
+2. **데이터 무결성**: 오프일 보호 + 백업/복원 메커니즘으로 근무표 일관성 유지
+3. **유연성**: is_leave 플래그로 휴가/근무 유형 명확한 구분
+4. **정규화**: use 트랜잭션 중복 필드 제거로 데이터 일관성 향상
+5. **안정성**: 타입 안전성 + 에러 핸들링 강화
+6. **사용성**: 단순명료한 중복 방지 정책 + 직관적 UX
 
 **기존 연차 정책 엔진과의 완벽 통합**으로 복잡한 연차 규칙을 자동 처리하면서도 사용자 친화적 인터페이스를 제공하는 견고한 기반을 구축했습니다.
+
+## 🔧 최근 주요 개선사항
+
+### V2 연차 관리 시스템 개선
+1. **근무표 백업/복원**: 휴가 승인 시 기존 근무 유형 백업, 취소 시 자동 복원
+2. **오프일 보호**: 휴가가 오프일을 덮어쓰지 않도록 보호
+3. **is_leave 플래그**: work_types 테이블에 명시적 휴가 구분 필드 추가
+4. **중복 방지 단순화**: 동일 날짜 다중 휴가 신청 완전 차단
+5. **데이터 정규화**: use 트랜잭션에서 중복 필드 제거

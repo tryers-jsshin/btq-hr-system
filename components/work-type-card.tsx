@@ -18,8 +18,8 @@ export function WorkTypeCard({ workType, onEdit, onDelete, isSystemManaged }: Wo
     return time.slice(0, 5) // HH:MM 형식으로 변환
   }
 
-  // 연차 유형인지 확인 (deduction_days 기준)
-  const isLeaveType = workType.deduction_days !== null && workType.deduction_days !== undefined
+  // 연차 유형인지 확인 (is_leave 기준)
+  const isLeaveType = workType.is_leave === true
 
   return (
     <Card className={`hover:shadow-md transition-shadow ${isLeaveType ? 'border-blue-200 bg-blue-50/30' : ''}`}>
@@ -59,7 +59,7 @@ export function WorkTypeCard({ workType, onEdit, onDelete, isSystemManaged }: Wo
             </span>
           </div>
           
-          {isLeaveType && workType.deduction_days && (
+          {isLeaveType && workType.deduction_days !== null && workType.deduction_days !== undefined && (
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <span className="font-medium text-blue-600">연차 차감:</span>
               <span className="font-semibold">
