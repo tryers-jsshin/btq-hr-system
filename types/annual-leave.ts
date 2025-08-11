@@ -17,12 +17,18 @@ export interface AnnualLeaveTransaction {
   id: string
   member_id: string
   member_name: string
-  transaction_type: "grant" | "use" | "expire" | "adjust" // 부여, 사용, 소멸, 조정
-  amount: number // 양수: 부여/복구, 음수: 사용/차감
+  transaction_type: "grant" | "manual_grant" | "use" | "expire" | "adjust" // 시스템부여, 수동부여, 사용, 소멸, 조정
+  amount: number // 부여/소멸: 양수, 사용: 음수
   reason: string
   grant_date?: string // 부여일 (소멸 계산용)
   expire_date?: string // 소멸 예정일
-  reference_id?: string // 휴가 신청 ID 등 참조
+  reference_id?: string // 부여 ID 또는 신청 ID 참조
+  status?: "active" | "cancelled" // 트랜잭션 상태
+  cancelled_at?: string // 취소 시각
+  cancelled_by?: string // 취소자
+  is_expired?: boolean // 소멸 여부
+  expired_at?: string // 소멸 시각
+  expired_by?: string // 소멸 처리자
   created_by: string
   created_at: string
   updated_at: string
@@ -43,9 +49,6 @@ export interface AnnualLeavePolicy {
   increment_years: number // 증가 주기 (기본 2년)
   increment_days: number // 증가 일수 (기본 1일)
   max_annual_days: number // 최대 연차 일수 (기본 25일)
-
-  // 소멸 정책
-  expire_after_months: number // 부여 후 소멸까지 개월 수 (기본 12개월)
 
   created_at: string
   updated_at: string

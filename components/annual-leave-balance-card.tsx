@@ -9,7 +9,7 @@ import type { AnnualLeaveBalance } from "@/types/annual-leave"
 interface AnnualLeaveBalanceCardProps {
   balance: AnnualLeaveBalance
   onViewHistory: (balance: AnnualLeaveBalance) => void
-  onAdjust: (balance: AnnualLeaveBalance, type: "add" | "subtract") => void
+  onAdjust: (balance: AnnualLeaveBalance, type: "grant" | "expire") => void
 }
 
 export function AnnualLeaveBalanceCard({ balance, onViewHistory, onAdjust }: AnnualLeaveBalanceCardProps) {
@@ -62,10 +62,10 @@ export function AnnualLeaveBalanceCard({ balance, onViewHistory, onAdjust }: Ann
             <Button variant="ghost" size="sm" onClick={() => onViewHistory(balance)} title="사용 내역">
               <Eye className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onAdjust(balance, "add")} title="연차 추가">
+            <Button variant="ghost" size="sm" onClick={() => onAdjust(balance, "grant")} title="연차 부여">
               <Plus className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onAdjust(balance, "subtract")} title="연차 차감">
+            <Button variant="ghost" size="sm" onClick={() => onAdjust(balance, "expire")} title="연차 차감">
               <Minus className="h-4 w-4" />
             </Button>
           </div>

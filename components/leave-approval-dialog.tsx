@@ -17,7 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
 import { supabaseLeaveRequestStorage } from "@/lib/supabase-leave-request-storage"
-import { supabaseAnnualLeaveStorage } from "@/lib/supabase-annual-leave-storage"
+import { supabaseAnnualLeaveStorageV2 } from "@/lib/supabase-annual-leave-storage-v2"
 import type { LeaveRequest } from "@/types/leave-request"
 
 interface LeaveApprovalDialogProps {
@@ -65,8 +65,8 @@ export function LeaveApprovalDialog({
 
   const loadMemberBalance = async () => {
     try {
-      const balance = await supabaseAnnualLeaveStorage.getBalanceByMemberId(request.member_id)
-      setMemberBalance(balance?.current_balance || 0)
+      const { currentBalance } = await supabaseAnnualLeaveStorageV2.calculateBalance(request.member_id)
+      setMemberBalance(currentBalance)
     } catch (error) {
       console.error("잔여 연차 조회 오류:", error)
     }

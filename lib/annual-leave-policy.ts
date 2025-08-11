@@ -1,4 +1,5 @@
 import { supabaseAnnualLeaveStorage } from "./supabase-annual-leave-storage"
+import { supabaseAnnualLeaveStorageV2 } from "./supabase-annual-leave-storage-v2"
 import { supabase } from "./supabase"
 import type { Database } from "@/types/database"
 import type { AnnualLeaveCalculation, AnnualLeavePolicy, AnnualLeaveTransaction } from "@/types/annual-leave"
@@ -26,6 +27,7 @@ export class AnnualLeavePolicyEngine {
     if (!this.policy) await this.initialize()
     if (!this.policy) throw new Error("연차 정책을 불러올 수 없습니다.")
 
+    // V2로 변경 필요 시 여기서 처리, 현재는 V1 유지 (구성원 목록 조회용)
     const members = await supabaseAnnualLeaveStorage.getActiveMembersForLeaveCalculation()
     const calculations: AnnualLeaveCalculation[] = []
 
@@ -61,9 +63,16 @@ export class AnnualLeavePolicyEngine {
     let nextGrantDate: string | undefined
     let nextExpireDate: string | undefined
 
-    // 기존 거래 내역 조회
-    const transactions = await supabaseAnnualLeaveStorage.getTransactionsByMemberId(member.id)
+    // 기존 거래 내역 조회 (V2 사용 - 활성 트랜잭션만)
+    const transactions = await supabaseAnnualLeaveStorageV2.getActiveTransactionsByMemberId(member.id)
     console.log(`기존 거래 내역: ${transactions.length}건`)
+    
+    // 디버깅: manual_grant 확인
+    const manualGrants = transactions.filter(t => t.transaction_type === "manual_grant")
+    console.log(`  - manual_grant: ${manualGrants.length}건`)
+    manualGrants.forEach(g => {
+      console.log(`    * expire_date: ${g.expire_date}, is_expired: ${g.is_expired}, status: ${g.status}`)
+    })
 
     if (currentPhase === "first_year") {
       console.log("→ 첫 해 월별 부여 계산 중...")
@@ -88,22 +97,22 @@ export class AnnualLeavePolicyEngine {
 
       console.log(`오늘 부여할 연차: ${shouldGrantToday}일`)
       console.log(`다음 부여일: ${nextGrantDate || "없음"}`)
-
-      // 소멸 계산 (2단계에서만)
-      const expirationResult = this.calculateExpiration(targetDate, transactions)
-      shouldExpireToday = expirationResult.shouldExpireToday
-      nextExpireDate = expirationResult.nextExpireDate
-
-      console.log(`오늘 소멸할 연차: ${shouldExpireToday}일`)
-      console.log(`다음 소멸일: ${nextExpireDate || "없음"}`)
     }
 
-    // 입사 1년이 되는 날에 첫 해 연차 소멸 처리 (단계와 무관하게)
+    // 소멸 계산 (모든 단계에서 실행 - manual_grant도 소멸되어야 함)
+    const expirationResult = this.calculateExpiration(targetDate, transactions)
+    shouldExpireToday = expirationResult.shouldExpireToday
+    nextExpireDate = expirationResult.nextExpireDate
+
+    console.log(`오늘 소멸할 연차: ${shouldExpireToday}일`)
+    console.log(`다음 소멸일: ${nextExpireDate || "없음"}`)
+
+    // 입사 1주년 당일(자정)에 첫 해 연차 소멸 처리 (단계와 무관하게)
     if (this.isSameDate(targetDate, oneYearLater)) {
       const expiredAmount = this.calculateFirstYearExpiration(transactions)
       if (expiredAmount > 0) {
         shouldExpireToday += expiredAmount
-        console.log(`★ 입사 1년 되는 날 - 첫 해 연차 소멸: ${expiredAmount}일`)
+        console.log(`★ 입사 1주년 당일(자정) - 첫 해 연차 소멸: ${expiredAmount}일`)
       }
     }
 
@@ -486,12 +495,26 @@ export class AnnualLeavePolicyEngine {
     let shouldExpireToday = 0
     let nextExpireDate: Date | undefined
 
-    // 오늘까지 소멸 예정인 부여 내역 찾기 (과거 포함)
+    // 오늘까지 소멸 예정인 부여 내역 찾기 (과거 포함) - manual_grant 포함
+    console.log(`  소멸 계산 시작 - targetDate: ${targetDate.toISOString().split("T")[0]}`)
     const expiringGrants = transactions.filter(
-      (t) => t.transaction_type === "grant" && t.expire_date && new Date(t.expire_date) <= targetDate,
+      (t) => {
+        const isGrantType = t.transaction_type === "grant" || t.transaction_type === "manual_grant"
+        const hasExpireDate = !!t.expire_date
+        const isExpired = hasExpireDate && new Date(t.expire_date) <= targetDate
+        
+        if (t.transaction_type === "manual_grant") {
+          console.log(`    manual_grant 체크: expire_date=${t.expire_date}, isExpired=${isExpired}`)
+        }
+        
+        return isGrantType && hasExpireDate && isExpired
+      }
     )
 
     console.log(`  소멸 대상 부여 내역: ${expiringGrants.length}건`)
+    expiringGrants.forEach(g => {
+      console.log(`    - ${g.transaction_type}: expire_date=${g.expire_date}, amount=${g.amount}`)
+    })
 
     for (const grant of expiringGrants) {
       // 이미 소멸 처리되었는지 확인
@@ -514,9 +537,11 @@ export class AnnualLeavePolicyEngine {
       }
     }
 
-    // 다음 소멸 예정일 찾기
+    // 다음 소멸 예정일 찾기 - manual_grant 포함
     const futureExpireDates = transactions
-      .filter((t) => t.transaction_type === "grant" && t.expire_date && new Date(t.expire_date) > targetDate)
+      .filter((t) => (t.transaction_type === "grant" || t.transaction_type === "manual_grant") && 
+                     t.expire_date && 
+                     new Date(t.expire_date) > targetDate)
       .map((t) => new Date(t.expire_date!))
       .sort((a, b) => a.getTime() - b.getTime())
 
@@ -653,24 +678,23 @@ export class AnnualLeavePolicyEngine {
     let expireDate: Date
 
     if (isFirstYear) {
-      // 입사일~1년까지: 입사 1년 되는 날에 모든 미사용 연차 자동 소멸
-      // 예: 2024년 7월 17일 입사 → 2025년 7월 17일에 소멸
+      // 입사일~1년까지: 입사 1주년 당일 자정에 모든 미사용 연차 자동 소멸
+      // 예: 2024년 7월 17일 입사 → 2025년 7월 17일 00:00:00에 소멸
       expireDate = new Date(joinDate)
-      expireDate.setFullYear(expireDate.getFullYear() + 1) // 입사 1년 되는 날
-      console.log(`입사 1년차 연차 소멸일: ${expireDate.toISOString().split("T")[0]} (입사 1년 되는 날)`)
+      expireDate.setFullYear(expireDate.getFullYear() + 1) // 입사 1년 후
+      console.log(`입사 1년차 연차 소멸일: ${expireDate.toISOString().split("T")[0]} (입사 1주년 당일 자정)`)
     } else {
-      // 1년 이후: n년차 입사기념일 기준 n+1년 후 소멸
-      // 예: 2026년 7월 17일 부여 → 2027년 7월 16일 소멸 (1년 후 전날)
+      // 1년 이후: 다음 입사기념일 자정에 소멸
+      // 예: 2025년 7월 17일 부여 → 2026년 7월 17일 00:00:00에 소멸
       expireDate = new Date(grantDate)
       expireDate.setFullYear(expireDate.getFullYear() + 1) // 1년 후
-      expireDate.setDate(expireDate.getDate() - 1) // 하루 전
 
-      console.log(`연간 부여 연차 소멸일: ${expireDate.toISOString().split("T")[0]}`)
-      console.log(`계산 과정: ${grantDate.toISOString().split("T")[0]} + 1년 - 1일`)
+      console.log(`연간 부여 연차 소멸일: ${expireDate.toISOString().split("T")[0]} (다음 입사기념일 자정)`)
+      console.log(`계산 과정: ${grantDate.toISOString().split("T")[0]} + 1년`)
     }
 
-    // 거래 내역 생성
-    await supabaseAnnualLeaveStorage.createTransaction({
+    // V2 시스템으로 거래 내역 생성
+    await supabaseAnnualLeaveStorageV2.createTransaction({
       member_id: memberId,
       member_name: memberName,
       transaction_type: "grant",
@@ -685,7 +709,8 @@ export class AnnualLeavePolicyEngine {
     await this.updateMemberBalance(memberId)
   }
 
-  // 연차 소멸 실행
+  // 연차 소멸 실행 (더 이상 사용하지 않음 - is_expired 필드로 관리)
+  // @deprecated expire 트랜잭션 대신 is_expired 필드 사용
   async expireAnnualLeave(
     memberId: string,
     memberName: string,
@@ -694,114 +719,47 @@ export class AnnualLeavePolicyEngine {
     grantDate: string,
     createdBy: string,
   ): Promise<void> {
-    console.log(`연차 소멸 실행: ${memberName}님의 ${amount}일 소멸`)
-
-    // 거래 내역 생성
-    await supabaseAnnualLeaveStorage.createTransaction({
-      member_id: memberId,
-      member_name: memberName,
-      transaction_type: "expire",
-      amount: -amount, // 음수로 기록
-      reason,
-      grant_date: grantDate,
-      created_by: createdBy,
-    })
-
-    // 잔액 업데이트
-    await this.updateMemberBalance(memberId)
+    console.log(`[DEPRECATED] 이 함수는 더 이상 사용되지 않습니다. is_expired 필드를 사용하세요.`)
   }
 
-  // 구성원 잔액 업데이트
+  // 구성원 잔액 업데이트 (V2 사용)
   private async updateMemberBalance(memberId: string): Promise<void> {
-    console.log(`=== ${memberId} 잔액 업데이트 시작 ===`)
-
-    const transactions = await supabaseAnnualLeaveStorage.getTransactionsByMemberId(memberId)
-    console.log(`거래 내역 ${transactions.length}건 조회됨`)
-
-    const totalGranted = transactions
-      .filter((t) => t.transaction_type === "grant")
-      .reduce((sum, t) => sum + t.amount, 0)
-
-    const totalUsed = transactions
-      .filter((t) => t.transaction_type === "use")
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
-
-    const totalExpired = transactions
-      .filter((t) => t.transaction_type === "expire")
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
-
-    const totalAdjusted = transactions
-      .filter((t) => t.transaction_type === "adjust")
-      .reduce((sum, t) => sum + t.amount, 0)
-
-    const currentBalance = totalGranted - totalUsed - totalExpired + totalAdjusted
-
-    console.log(`잔액 계산 결과:`)
-    console.log(`- 총 부여: ${totalGranted}일`)
-    console.log(`- 총 사용: ${totalUsed}일`)
-    console.log(`- 총 소멸: ${totalExpired}일`)
-    console.log(`- 총 조정: ${totalAdjusted}일`)
-    console.log(`- 현재 잔액: ${currentBalance}일`)
-
-    // 구성원 정보 조회
-    const { data: member } = await supabase
-      .from("members")
-      .select("name, team_name, join_date")
-      .eq("id", memberId)
-      .single()
-
-    if (member) {
-      console.log(`구성원 정보: ${member.name} (${member.team_name})`)
-
-      await supabaseAnnualLeaveStorage.upsertBalance({
-        member_id: memberId,
-        member_name: member.name,
-        team_name: member.team_name || "",
-        join_date: member.join_date,
-        total_granted: totalGranted,
-        total_used: totalUsed,
-        total_expired: totalExpired,
-        current_balance: currentBalance,
-        last_updated: new Date().toISOString(),
-      })
-
-      console.log(`=== ${member.name} 잔액 업데이트 완료 ===`)
-    } else {
-      console.error(`구성원 정보를 찾을 수 없음: ${memberId}`)
-    }
+    console.log(`=== ${memberId} 잔액 업데이트 시작 (V2) ===`)
+    
+    // V2 시스템으로 잔액 업데이트
+    await supabaseAnnualLeaveStorageV2.updateMemberBalance(memberId)
+    
+    console.log(`=== 잔액 업데이트 완료 (V2) ===`)
   }
 
   // 연차 소멸 처리 (특정 날짜 기준)
   public async processExpiredLeaves(memberId: string, memberName: string, targetDate: Date): Promise<void> {
     console.log(`연차 소멸 처리 시작: ${memberName}님, 기준일: ${targetDate.toISOString().split("T")[0]}`)
 
-    const transactions = await supabaseAnnualLeaveStorage.getTransactionsByMemberId(memberId)
-
-    // 소멸 대상 연차 찾기 (grant이고, expire_date가 targetDate 이전)
-    const expiringGrants = transactions.filter(
-      (t) => t.transaction_type === "grant" && t.expire_date && new Date(t.expire_date) <= targetDate,
-    )
+    // V2 시스템 사용: 소멸 대상 부여 조회 (아직 소멸되지 않은 것만)
+    const expiringGrants = await supabaseAnnualLeaveStorageV2.getExpirableGrants(memberId, targetDate)
+    
+    console.log(`소멸 대상 부여: ${expiringGrants.length}개`)
+    
+    // 모든 트랜잭션 조회 (사용량 계산용)
+    const transactions = await supabaseAnnualLeaveStorageV2.getActiveTransactionsByMemberId(memberId)
 
     for (const grant of expiringGrants) {
       const expireDate = new Date(grant.expire_date!)
+      console.log(`  처리 중: 부여 ID ${grant.id}, 부여일: ${grant.grant_date}, 소멸예정일: ${grant.expire_date}`)
 
-      // 이미 소멸 처리된 연차는 제외
-      const alreadyExpired = transactions.some(
-        (t) => t.transaction_type === "expire" && t.grant_date === grant.grant_date,
-      )
-      if (alreadyExpired) {
-        console.log(`  - ${grant.grant_date} 부여 연차는 이미 소멸 처리됨`)
-        continue
-      }
 
-      // 해당 부여 내역의 미사용 잔액 계산
+      // 해당 부여를 참조하는 사용 내역 계산
       const usedAmount = transactions
         .filter(
-          (t) => t.grant_date === grant.grant_date && (t.transaction_type === "use" || t.transaction_type === "expire"),
+          (t) => t.reference_id === grant.id && 
+                 t.transaction_type === "use" &&
+                 t.status !== "cancelled"
         )
         .reduce((sum, t) => sum + Math.abs(t.amount), 0)
 
       const remainingAmount = grant.amount - usedAmount
+      console.log(`  - 부여량: ${grant.amount}, 사용량: ${usedAmount}, 잔여량: ${remainingAmount}`)
 
       if (remainingAmount > 0) {
         // 소멸 실행
@@ -810,7 +768,9 @@ export class AnnualLeavePolicyEngine {
           `  - ${grant.grant_date} 부여 연차 소멸: ${remainingAmount}일 (소멸일: ${expireDate.toISOString().split("T")[0]})`,
         )
 
-        await this.expireAnnualLeave(memberId, memberName, remainingAmount, reason, grant.grant_date!, "SYSTEM")
+        // 원본 부여 트랜잭션에 expired 마킹
+        await supabaseAnnualLeaveStorageV2.expireGrantTransaction(grant.id, "SYSTEM")
+        console.log(`  - 부여 ID ${grant.id} 소멸 처리 (잔여: ${remainingAmount}일)`)
       }
     }
 
@@ -888,7 +848,7 @@ export async function runDailyAnnualLeaveUpdate(targetDate: Date = new Date()): 
             const member = await supabase.from("members").select("join_date").eq("id", calc.member_id).single()
             if (member.data) {
               const joinDate = new Date(member.data.join_date)
-              const transactions = await supabaseAnnualLeaveStorage.getTransactionsByMemberId(calc.member_id)
+              const transactions = await supabaseAnnualLeaveStorageV2.getActiveTransactionsByMemberId(calc.member_id)
               const missedGrants = engine.calculateMissedMonthlyGrants(joinDate, targetDate, transactions)
 
               // 각 누락된 개월차별로 실제 부여일로 소급 부여
@@ -909,7 +869,7 @@ export async function runDailyAnnualLeaveUpdate(targetDate: Date = new Date()): 
             const member = await supabase.from("members").select("join_date").eq("id", calc.member_id).single()
             if (member.data) {
               const joinDate = new Date(member.data.join_date)
-              const transactions = await supabaseAnnualLeaveStorage.getTransactionsByMemberId(calc.member_id)
+              const transactions = await supabaseAnnualLeaveStorageV2.getActiveTransactionsByMemberId(calc.member_id)
               const missedGrants = engine.calculateMissedAnnualGrants(joinDate, targetDate, transactions)
 
               // 각 누락된 기념일별로 실제 기념일로 소급 부여

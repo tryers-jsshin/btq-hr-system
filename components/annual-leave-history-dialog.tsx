@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Calendar, Plus, Minus, Clock, RotateCcw } from "lucide-react"
-import { supabaseAnnualLeaveStorage } from "@/lib/supabase-annual-leave-storage"
+import { supabaseAnnualLeaveStorageV2 } from "@/lib/supabase-annual-leave-storage-v2"
 import type { AnnualLeaveBalance, AnnualLeaveTransaction } from "@/types/annual-leave"
 
 interface AnnualLeaveHistoryDialogProps {
@@ -29,7 +29,8 @@ export function AnnualLeaveHistoryDialog({ open, onOpenChange, balance }: Annual
 
     try {
       setLoading(true)
-      const data = await supabaseAnnualLeaveStorage.getTransactionsByMemberId(balance.member_id)
+      // 모든 트랜잭션 조회 (취소된 것 포함)
+      const data = await supabaseAnnualLeaveStorageV2.getAllTransactionsByMemberId(balance.member_id)
       setTransactions(data)
     } catch (error) {
       console.error("거래 내역 로드 실패:", error)
@@ -40,47 +41,57 @@ export function AnnualLeaveHistoryDialog({ open, onOpenChange, balance }: Annual
 
   if (!balance) return null
 
-  const getTransactionIcon = (type: string, amount: number) => {
+  const getTransactionIcon = (type: string, status?: string, isExpired?: boolean) => {
+    // 취소된 트랜잭션은 회색 처리
+    const isCancelled = status === "cancelled"
+    
     switch (type) {
       case "grant":
-        return <Plus className="h-4 w-4 text-green-600" />
-      case "use":
-        if (amount > 0) {
-          // 양수인 경우: 취소로 인한 복구
-          return <RotateCcw className="h-4 w-4 text-blue-600" />
-        } else {
-          // 음수인 경우: 실제 사용
-          return <Minus className="h-4 w-4 text-orange-600" />
+      case "manual_grant":
+        if (isExpired) {
+          return <Clock className="h-4 w-4 text-red-600" /> // 소멸된 부여
         }
+        return <Plus className={`h-4 w-4 ${isCancelled ? "text-gray-400" : "text-green-600"}`} />
+      case "use":
+        return <Minus className={`h-4 w-4 ${isCancelled ? "text-gray-400" : "text-orange-600"}`} />
       case "expire":
-        return <Clock className="h-4 w-4 text-red-600" />
+        return <Clock className={`h-4 w-4 ${isCancelled ? "text-gray-400" : "text-red-600"}`} />
       case "adjust":
-        return <RotateCcw className="h-4 w-4 text-blue-600" />
+        return <RotateCcw className={`h-4 w-4 ${isCancelled ? "text-gray-400" : "text-blue-600"}`} />
       default:
-        return <Calendar className="h-4 w-4 text-gray-600" />
+        return <Calendar className={`h-4 w-4 ${isCancelled ? "text-gray-400" : "text-gray-600"}`} />
     }
   }
 
-  const getTransactionBadge = (type: string, amount: number) => {
+  const getTransactionBadge = (type: string, amount: number, status?: string, isExpired?: boolean) => {
+    const isCancelled = status === "cancelled"
+    
+    // 취소된 트랜잭션은 취소선 스타일 추가
+    const baseClass = isCancelled ? "opacity-50 line-through" : ""
+    
     switch (type) {
       case "grant":
-        return <Badge className="bg-green-100 text-green-800">+{amount}일 부여</Badge>
-      case "use":
-        if (amount > 0) {
-          // 양수인 경우: 취소로 인한 복구
-          return <Badge className="bg-blue-100 text-blue-800">+{amount}일 복구</Badge>
-        } else {
-          // 음수인 경우: 실제 사용
-          return <Badge className="bg-orange-100 text-orange-800">-{Math.abs(amount)}일 사용</Badge>
+        if (isExpired) {
+          return <Badge className={`bg-red-100 text-red-800 ${baseClass}`}>+{amount}일 부여 (소멸됨)</Badge>
         }
+        return <Badge className={`bg-green-100 text-green-800 ${baseClass}`}>+{amount}일 부여</Badge>
+      case "manual_grant":
+        if (isExpired) {
+          return <Badge className={`bg-red-100 text-red-800 ${baseClass}`}>+{amount}일 수동부여 (소멸됨)</Badge>
+        }
+        return <Badge className={`bg-green-100 text-green-800 ${baseClass}`}>+{amount}일 수동부여</Badge>
+      case "use":
+        return <Badge className={`bg-orange-100 text-orange-800 ${baseClass}`}>{Math.abs(amount)}일 사용</Badge>
       case "expire":
-        return <Badge className="bg-red-100 text-red-800">-{Math.abs(amount)}일 소멸</Badge>
+        return <Badge className={`bg-red-100 text-red-800 ${baseClass}`}>{Math.abs(amount)}일 소멸</Badge>
       case "adjust":
         return (
-          <Badge className="bg-blue-100 text-blue-800">{amount > 0 ? `+${amount}일 조정` : `${amount}일 조정`}</Badge>
+          <Badge className={`bg-purple-100 text-purple-800 ${baseClass}`}>
+            {amount > 0 ? `+${amount}일 조정` : `${amount}일 조정`}
+          </Badge>
         )
       default:
-        return <Badge variant="secondary">{amount}일</Badge>
+        return <Badge variant="secondary" className={baseClass}>{amount}일</Badge>
     }
   }
 
@@ -133,33 +144,49 @@ export function AnnualLeaveHistoryDialog({ open, onOpenChange, balance }: Annual
               </div>
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {transactions.map((transaction) => (
-                  <Card key={transaction.id} className="p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        {getTransactionIcon(transaction.transaction_type, transaction.amount)}
-                        <div>
-                          <div className="font-medium text-sm">{transaction.reason}</div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(transaction.created_at).toLocaleDateString("ko-KR")} • {transaction.created_by}
-                          </div>
-                          {transaction.grant_date && (
-                            <div className="text-xs text-gray-500">
-                              부여일: {new Date(transaction.grant_date).toLocaleDateString("ko-KR")}
-                              {transaction.expire_date && (
-                                <span>
-                                  {" "}
-                                  • 소멸 예정: {new Date(transaction.expire_date).toLocaleDateString("ko-KR")}
-                                </span>
-                              )}
+                {transactions.map((transaction) => {
+                  const isCancelled = transaction.status === "cancelled"
+                  const isExpired = transaction.is_expired
+                  return (
+                    <Card key={transaction.id} className={`p-3 ${isCancelled ? "bg-gray-50" : isExpired ? "bg-red-50" : ""}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          {getTransactionIcon(transaction.transaction_type, transaction.status, transaction.is_expired)}
+                          <div>
+                            <div className={`font-medium text-sm ${isCancelled ? "text-gray-500" : isExpired ? "text-red-700" : ""}`}>
+                              {transaction.reason}
                             </div>
-                          )}
+                            <div className="text-xs text-gray-500">
+                              {new Date(transaction.created_at).toLocaleDateString("ko-KR")} • {transaction.created_by}
+                            </div>
+                            {transaction.grant_date && (
+                              <div className="text-xs text-gray-500">
+                                부여일: {new Date(transaction.grant_date).toLocaleDateString("ko-KR")}
+                                {transaction.expire_date && (
+                                  <span>
+                                    {" "}
+                                    • 소멸 예정: {new Date(transaction.expire_date).toLocaleDateString("ko-KR")}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {isCancelled && transaction.cancelled_at && (
+                              <div className="text-xs text-red-500 mt-1">
+                                취소됨: {new Date(transaction.cancelled_at).toLocaleDateString("ko-KR")} • {transaction.cancelled_by}
+                              </div>
+                            )}
+                            {isExpired && transaction.expired_at && (
+                              <div className="text-xs text-red-600 mt-1">
+                                소멸됨: {new Date(transaction.expired_at).toLocaleDateString("ko-KR")} • {transaction.expired_by}
+                              </div>
+                            )}
+                          </div>
                         </div>
+                        <div>{getTransactionBadge(transaction.transaction_type, transaction.amount, transaction.status, transaction.is_expired)}</div>
                       </div>
-                      <div>{getTransactionBadge(transaction.transaction_type, transaction.amount)}</div>
-                    </div>
-                  </Card>
-                ))}
+                    </Card>
+                  )
+                })}
               </div>
             )}
           </div>

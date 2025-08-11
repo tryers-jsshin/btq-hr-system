@@ -1,6 +1,6 @@
 import { supabase } from "./supabase"
-import { supabaseAnnualLeaveStorage } from "./supabase-annual-leave-storage"
 import { supabaseWorkScheduleStorage } from "./supabase-work-schedule-storage"
+import { annualLeaveFIFOV2 } from "./annual-leave-fifo-v2"
 import type {
   LeaveRequest,
   LeaveRequestInsert,
@@ -31,9 +31,10 @@ export class SupabaseLeaveRequestStorage {
       throw new Error("구성원 정보를 찾을 수 없습니다.")
     }
 
-    // 잔여 연차 확인
-    const balance = await supabaseAnnualLeaveStorage.getBalanceByMemberId(memberId)
-    if (!balance || balance.current_balance <= 0) {
+    // V2 스토리지 import 및 잔여 연차 확인
+    const { supabaseAnnualLeaveStorageV2 } = await import("./supabase-annual-leave-storage-v2")
+    const { currentBalance } = await supabaseAnnualLeaveStorageV2.calculateBalance(memberId)
+    if (currentBalance <= 0) {
       throw new Error("잔여 연차가 부족합니다.")
     }
 
@@ -58,8 +59,8 @@ export class SupabaseLeaveRequestStorage {
     const totalDays = this.calculateLeaveDays(workingDays, data.leave_type)
 
     // 잔여 연차 확인
-    if (balance.current_balance < totalDays) {
-      throw new Error(`잔여 연차(${balance.current_balance}일)가 부족합니다. 필요한 연차: ${totalDays}일`)
+    if (currentBalance < totalDays) {
+      throw new Error(`잔여 연차(${currentBalance}일)가 부족합니다. 필요한 연차: ${totalDays}일`)
     }
 
     // 일별 연차 사용량 한도 확인 (1일 초과 방지)
@@ -115,9 +116,12 @@ export class SupabaseLeaveRequestStorage {
       throw new Error("승인 대상 연차 신청을 찾을 수 없습니다.")
     }
 
-    // 잔여 연차 재확인
-    const balance = await supabaseAnnualLeaveStorage.getBalanceByMemberId(request.member_id)
-    if (!balance || balance.current_balance < request.total_days) {
+    // V2 스토리지 import
+    const { supabaseAnnualLeaveStorageV2 } = await import("./supabase-annual-leave-storage-v2")
+    
+    // 잔여 연차 재확인 (V2 사용)
+    const { currentBalance } = await supabaseAnnualLeaveStorageV2.calculateBalance(request.member_id)
+    if (currentBalance < request.total_days) {
       throw new Error("잔여 연차가 부족하여 승인할 수 없습니다.")
     }
 
@@ -135,19 +139,20 @@ export class SupabaseLeaveRequestStorage {
       throw new Error("연차 승인 업데이트 중 오류가 발생했습니다.")
     }
 
-    // 연차 차감 처리
-    await supabaseAnnualLeaveStorage.createTransaction({
-      member_id: request.member_id,
-      member_name: request.member_name,
-      transaction_type: "use",
-      amount: -request.total_days,
-      reason: `${request.leave_type} 사용 (${request.start_date}~${request.end_date})`,
-      reference_id: request.id, // 연차 신청 ID 참조
-      created_by: approvalData.approved_by,
-    })
+    // 연차 차감 처리 (V2 FIFO 방식)
+    await annualLeaveFIFOV2.createUsageTransactions(
+      request.member_id,
+      request.member_name,
+      request.leave_type,
+      request.start_date,
+      request.end_date,
+      request.total_days,
+      request.id,
+      approvalData.approved_by
+    )
 
-    // 잔액 업데이트
-    await supabaseAnnualLeaveStorage.updateMemberBalance(request.member_id)
+    // 잔액 업데이트 (V2 사용)
+    await supabaseAnnualLeaveStorageV2.updateMemberBalance(request.member_id)
 
     // 근무표에 연차 반영
     await this.updateWorkScheduleForLeave(request)
@@ -215,19 +220,13 @@ export class SupabaseLeaveRequestStorage {
     if (request.status === "승인됨") {
       console.log(`승인된 연차 취소로 인한 복구 처리: ${request.total_days}일`)
       
-      // 사용 거래를 상쇄하는 복구 거래 생성 (use 타입으로 양수 처리)
-      await supabaseAnnualLeaveStorage.createTransaction({
-        member_id: request.member_id,
-        member_name: request.member_name,
-        transaction_type: "use",
-        amount: request.total_days, // 양수로 저장하여 사용을 상쇄
-        reason: `${request.leave_type} 취소로 인한 사용 상쇄 (${request.start_date}~${request.end_date})`,
-        reference_id: request.id, // 연차 신청 ID 참조
-        created_by: cancellationData.cancelled_by,
-      })
+      // V2 시스템 사용: 사용 트랜잭션의 status를 cancelled로 변경
+      await annualLeaveFIFOV2.cancelUsageTransactions(request.id, cancellationData.cancelled_by)
 
       console.log("연차 잔액 업데이트 시작")
-      await supabaseAnnualLeaveStorage.updateMemberBalance(request.member_id)
+      // V2 스토리지로 잔액 업데이트
+      const { supabaseAnnualLeaveStorageV2 } = await import("./supabase-annual-leave-storage-v2")
+      await supabaseAnnualLeaveStorageV2.updateMemberBalance(request.member_id)
 
       console.log("근무표에서 연차 제거 시작")
       // 근무표에서 연차 제거
@@ -290,12 +289,13 @@ export class SupabaseLeaveRequestStorage {
       return null
     }
 
-    // 잔여 연차 정보 추가
-    const balance = await supabaseAnnualLeaveStorage.getBalanceByMemberId(data.member_id)
+    // V2 스토리지로 잔여 연차 정보 추가
+    const { supabaseAnnualLeaveStorageV2 } = await import("./supabase-annual-leave-storage-v2")
+    const { currentBalance } = await supabaseAnnualLeaveStorageV2.calculateBalance(data.member_id)
     
     return {
       ...data,
-      remaining_balance: balance?.current_balance || 0,
+      remaining_balance: currentBalance,
     }
   }
 

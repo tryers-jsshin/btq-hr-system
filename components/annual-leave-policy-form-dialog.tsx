@@ -31,7 +31,6 @@ export function AnnualLeavePolicyFormDialog({ open, onOpenChange, policy, onSave
     increment_years: 2,
     increment_days: 1,
     max_annual_days: 25,
-    expire_after_months: 12,
   })
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
 
@@ -47,7 +46,6 @@ export function AnnualLeavePolicyFormDialog({ open, onOpenChange, policy, onSave
         increment_years: policy.increment_years,
         increment_days: policy.increment_days,
         max_annual_days: policy.max_annual_days,
-        expire_after_months: policy.expire_after_months,
       })
     } else {
       setFormData({
@@ -60,7 +58,6 @@ export function AnnualLeavePolicyFormDialog({ open, onOpenChange, policy, onSave
         increment_years: 2,
         increment_days: 1,
         max_annual_days: 25,
-        expire_after_months: 12,
       })
     }
     setErrors({})
@@ -97,9 +94,6 @@ export function AnnualLeavePolicyFormDialog({ open, onOpenChange, policy, onSave
       newErrors.max_annual_days = "최대 연차는 기본 연차보다 크거나 같아야 합니다"
     }
 
-    if (formData.expire_after_months < 1) {
-      newErrors.expire_after_months = "소멸 기간은 1개월 이상이어야 합니다"
-    }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -303,34 +297,19 @@ export function AnnualLeavePolicyFormDialog({ open, onOpenChange, policy, onSave
             </CardContent>
           </Card>
 
-          {/* 소멸 정책 */}
+          {/* 소멸 정책 안내 */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">소멸 정책</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="expire_after_months">소멸 기간 (개월)</Label>
-                <Input
-                  id="expire_after_months"
-                  type="number"
-                  min="1"
-                  value={formData.expire_after_months}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, expire_after_months: Number.parseInt(e.target.value) || 12 }))
-                  }
-                  className={errors.expire_after_months ? "border-red-500" : ""}
-                />
-                {errors.expire_after_months && <p className="text-sm text-red-500">{errors.expire_after_months}</p>}
-              </div>
-
-              <div className="p-3 bg-yellow-50 rounded-lg text-sm text-yellow-700">
+            <CardContent>
+              <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-700 space-y-1">
                 <p>
-                  <strong>소멸 규칙:</strong>
+                  <strong>연차 소멸 규칙:</strong>
                 </p>
-                <p>• 부여일 기준 {formData.expire_after_months}개월 후 소멸</p>
-                <p>• 예: 2024년 7월 31일 부여 → 2025년 7월 30일 소멸</p>
-                <p>• 입사 첫 해는 입사 1년 되는 날 모든 연차 소멸</p>
+                <p>• 입사 첫 해: 입사 1주년 당일 자정에 잔여 연차 전량 소멸</p>
+                <p>• 입사 1년 이후: 매년 입사기념일 자정에 전년도 잔여 연차 소멸</p>
+                <p>• 예: 7월 17일 입사 → 다음해 7월 17일 00:00:00에 소멸</p>
               </div>
             </CardContent>
           </Card>

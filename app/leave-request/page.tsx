@@ -5,15 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CalendarDays, Clock, FileText, Plus, X } from "lucide-react"
+import { CalendarDays, Clock, FileText, Plus, X, Eye } from "lucide-react"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
 import { supabaseLeaveRequestStorage } from "@/lib/supabase-leave-request-storage"
+import { supabaseAnnualLeaveStorageV2 } from "@/lib/supabase-annual-leave-storage-v2"
 import { supabaseAnnualLeaveStorage } from "@/lib/supabase-annual-leave-storage"
 import { supabase } from "@/lib/supabase"
 import { LeaveRequestFormDialog } from "@/components/leave-request-form-dialog"
+import { AnnualLeavePolicyViewDialog } from "@/components/annual-leave-policy-view-dialog"
 import type { LeaveRequest } from "@/types/leave-request"
-import type { AnnualLeaveBalance } from "@/types/annual-leave"
+import type { AnnualLeaveBalance, AnnualLeavePolicy } from "@/types/annual-leave"
 
 const statusColors = {
   "대기중": "bg-yellow-100 text-yellow-800",
@@ -34,6 +36,8 @@ export default function LeaveRequestPage() {
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [showRequestDialog, setShowRequestDialog] = useState(false)
+  const [showPolicyDialog, setShowPolicyDialog] = useState(false)
+  const [activePolicy, setActivePolicy] = useState<AnnualLeavePolicy | null>(null)
 
   useEffect(() => {
     loadData()
@@ -53,10 +57,31 @@ export default function LeaveRequestPage() {
         const requests = await supabaseLeaveRequestStorage.getLeaveRequestsByMemberId(user.id)
         setLeaveRequests(requests)
         
-        // 연차 잔액 조회
-        const userBalance = await supabaseAnnualLeaveStorage.getBalanceByMemberId(user.id)
+        // 연차 잔액 조회 (V2 사용)
+        const { totalGranted, totalUsed, totalExpired, currentBalance } = 
+          await supabaseAnnualLeaveStorageV2.calculateBalance(user.id)
+        
+        // AnnualLeaveBalance 타입에 맞게 구성
+        const userBalance: AnnualLeaveBalance = {
+          id: user.id,
+          member_id: user.id,
+          member_name: user.name || "",
+          team_name: "",
+          join_date: "",
+          total_granted: totalGranted,
+          total_used: totalUsed,
+          total_expired: totalExpired,
+          current_balance: currentBalance,
+          last_updated: new Date().toISOString(),
+          created_at: "",
+          updated_at: ""
+        }
         setBalance(userBalance)
       }
+      
+      // 활성 연차 정책 조회
+      const policy = await supabaseAnnualLeaveStorage.getActivePolicy()
+      setActivePolicy(policy)
     } catch (error) {
       console.error("데이터 로드 오류:", error)
     } finally {
@@ -122,10 +147,20 @@ export default function LeaveRequestPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">연차 신청</h1>
-        <Button onClick={() => setShowRequestDialog(true)} className="flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          연차 신청
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowPolicyDialog(true)}
+            className="flex items-center gap-2"
+          >
+            <Eye className="h-4 w-4" />
+            연차 정책 보기
+          </Button>
+          <Button onClick={() => setShowRequestDialog(true)} className="flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            연차 신청
+          </Button>
+        </div>
       </div>
 
       {/* 연차 잔액 카드 */}
@@ -275,6 +310,13 @@ export default function LeaveRequestPage() {
         onSubmit={handleRequestSubmit}
         currentBalance={balance?.current_balance || 0}
         memberId={currentUser?.id || ""}
+      />
+      
+      {/* 연차 정책 보기 다이얼로그 */}
+      <AnnualLeavePolicyViewDialog
+        open={showPolicyDialog}
+        onOpenChange={setShowPolicyDialog}
+        policy={activePolicy}
       />
     </div>
   )

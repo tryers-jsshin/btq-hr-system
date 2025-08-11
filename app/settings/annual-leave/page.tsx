@@ -5,12 +5,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Calendar, Settings, Play, RefreshCw, Plus, AlertTriangle, Clock } from "lucide-react"
+import { Calendar, Settings, Play, RefreshCw, AlertTriangle, Clock, Eye } from "lucide-react"
 import { AnnualLeavePolicyFormDialog } from "@/components/annual-leave-policy-form-dialog"
+import { AnnualLeavePolicyViewDialog } from "@/components/annual-leave-policy-view-dialog"
 import { AnnualLeaveBalanceCard } from "@/components/annual-leave-balance-card"
 import { AnnualLeaveHistoryDialog } from "@/components/annual-leave-history-dialog"
 import { AnnualLeaveAdjustDialog } from "@/components/annual-leave-adjust-dialog"
+import { AnnualLeaveGrantCancelDialog } from "@/components/annual-leave-grant-cancel-dialog"
 import { supabaseAnnualLeaveStorage } from "@/lib/supabase-annual-leave-storage"
+import { supabaseAnnualLeaveStorageV2 } from "@/lib/supabase-annual-leave-storage-v2"
 import { runDailyAnnualLeaveUpdate } from "@/lib/annual-leave-policy"
 import { supabaseAuthStorage } from "@/lib/supabase-auth-storage"
 import { supabase } from "@/lib/supabase"
@@ -21,12 +24,14 @@ export default function AnnualLeavePage() {
   const [policies, setPolicies] = useState<AnnualLeavePolicy[]>([])
   const [balances, setBalances] = useState<AnnualLeaveBalance[]>([])
   const [policyDialogOpen, setPolicyDialogOpen] = useState(false)
+  const [policyViewDialogOpen, setPolicyViewDialogOpen] = useState(false)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false)
+  const [grantCancelDialogOpen, setGrantCancelDialogOpen] = useState(false)
   const [editingPolicy, setEditingPolicy] = useState<AnnualLeavePolicy | null>(null)
   const [viewingBalance, setViewingBalance] = useState<AnnualLeaveBalance | null>(null)
   const [adjustingBalance, setAdjustingBalance] = useState<AnnualLeaveBalance | null>(null)
-  const [adjustType, setAdjustType] = useState<"add" | "subtract">("add")
+  const [adjustType, setAdjustType] = useState<"grant" | "expire">("grant")
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const { toast } = useToast()
@@ -43,10 +48,27 @@ export default function AnnualLeavePage() {
         supabaseAnnualLeaveStorage.getAllActiveMemberBalances(), // 모든 활성 구성원 조회로 변경
       ])
       setPolicies(policiesData)
-      setBalances(balancesData)
-      console.log(`총 ${balancesData.length}명의 구성원 연차 현황 로드됨`)
+      
+      // V2 시스템으로 각 구성원의 잔액 재계산
+      const updatedBalances = await Promise.all(
+        balancesData.map(async (balance) => {
+          const { totalGranted, totalUsed, totalExpired, currentBalance } = 
+            await supabaseAnnualLeaveStorageV2.calculateBalance(balance.member_id)
+          
+          return {
+            ...balance,
+            total_granted: totalGranted,
+            total_used: totalUsed,
+            total_expired: totalExpired,
+            current_balance: currentBalance,
+          }
+        })
+      )
+      
+      setBalances(updatedBalances)
+      console.log(`총 ${updatedBalances.length}명의 구성원 연차 현황 로드됨 (V2 시스템)`)
     } catch (error) {
-      console.error("데이터 로드 실��:", error)
+      console.error("데이터 로드 실패:", error)
       toast({
         title: "데이터 로드 실패",
         description: "연차 데이터를 불러오는데 실패했습니다.",
@@ -118,74 +140,29 @@ export default function AnnualLeavePage() {
     }
   }
 
-  // 구성원 잔액 수동 업데이트 함수
+  // 구성원 잔액 수동 업데이트 함수 (V2 사용)
   const updateMemberBalance = async (memberId: string): Promise<void> => {
-    console.log(`=== ${memberId} 잔액 수동 업데이트 시작 ===`)
-
-    const transactions = await supabaseAnnualLeaveStorage.getTransactionsByMemberId(memberId)
-    console.log(`거래 내역 ${transactions.length}건 조회됨`)
-
-    const totalGranted = transactions
-      .filter((t) => t.transaction_type === "grant")
-      .reduce((sum, t) => sum + t.amount, 0)
-
-    const totalUsed = transactions
-      .filter((t) => t.transaction_type === "use")
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
-
-    const totalExpired = transactions
-      .filter((t) => t.transaction_type === "expire")
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
-
-    const totalAdjusted = transactions
-      .filter((t) => t.transaction_type === "adjust")
-      .reduce((sum, t) => sum + t.amount, 0)
-
-    const currentBalance = totalGranted - totalUsed - totalExpired + totalAdjusted
-
-    console.log(`잔액 계산 결과:`)
-    console.log(`- 총 부여: ${totalGranted}일`)
-    console.log(`- 총 사용: ${totalUsed}일`)
-    console.log(`- 총 소멸: ${totalExpired}일`)
-    console.log(`- 총 조정: ${totalAdjusted}일`)
-    console.log(`- 현재 잔액: ${currentBalance}일`)
-
-    // 구성원 정보 조회
-    const { data: member } = await supabase
-      .from("members")
-      .select("name, team_name, join_date")
-      .eq("id", memberId)
-      .single()
-
-    if (member) {
-      console.log(`구성원 정보: ${member.name} (${member.team_name})`)
-
-      await supabaseAnnualLeaveStorage.upsertBalance({
-        member_id: memberId,
-        member_name: member.name,
-        team_name: member.team_name || "",
-        join_date: member.join_date,
-        total_granted: totalGranted,
-        total_used: totalUsed,
-        total_expired: totalExpired,
-        current_balance: currentBalance,
-        last_updated: new Date().toISOString(),
-      })
-
-      console.log(`=== ${member.name} 잔액 업데이트 완료 ===`)
-    } else {
-      console.error(`구성원 정보를 찾을 수 없음: ${memberId}`)
-    }
+    console.log(`=== ${memberId} 잔액 수동 업데이트 시작 (V2) ===`)
+    
+    // V2 시스템으로 잔액 업데이트
+    await supabaseAnnualLeaveStorageV2.updateMemberBalance(memberId)
+    
+    console.log(`=== 잔액 업데이트 완료 (V2) ===`)
   }
 
-  const handleAdjustBalance = async (data: {
+  const handleGrantCancel = async (data: {
     memberId: string
     memberName: string
-    amount: number
+    grants: {
+      id: string
+      amount: number
+      grant_date: string
+      expire_date?: string
+    }[]
     reason: string
   }) => {
     try {
-      console.log("연차 조정 시작:", data)
+      console.log("부여 취소 처리 시작:", data)
 
       const currentUser = await supabaseAuthStorage.getCurrentUser()
       if (!currentUser) {
@@ -197,15 +174,158 @@ export default function AnnualLeavePage() {
         return
       }
 
-      // 거래 내역 생성
-      await supabaseAnnualLeaveStorage.createTransaction({
-        member_id: data.memberId,
-        member_name: data.memberName,
-        transaction_type: "adjust",
-        amount: data.amount,
-        reason: data.reason,
-        created_by: currentUser.name,
+      const today = new Date().toISOString().split("T")[0]
+      const totalAmount = data.grants.reduce((sum, g) => sum + g.amount, 0)
+      
+      // V2 스토리지 사용
+      const { supabaseAnnualLeaveStorageV2 } = await import("@/lib/supabase-annual-leave-storage-v2")
+      
+      // 각 부여에 대한 처리
+      for (const grant of data.grants) {
+        // 부여에서 일부 사용이 있는지 확인
+        const transactions = await supabaseAnnualLeaveStorageV2.getAllTransactionsByMemberId(data.memberId)
+        const originalGrant = transactions.find(t => t.id === grant.id)
+        
+        if (!originalGrant) continue
+        
+        // 해당 부여의 사용량 계산
+        const usages = transactions
+          .filter(t => 
+            t.reference_id === grant.id && 
+            t.transaction_type === "use" &&
+            (t.status === "active" || !t.status)
+          )
+        const usedAmount = usages.reduce((sum, t) => sum + Math.abs(t.amount), 0)
+        
+        // 부분 취소인지 전체 취소인지 판단
+        if (grant.amount === originalGrant.amount && usedAmount === 0) {
+          // 전체 취소 (사용 내역 없음)
+          await supabaseAnnualLeaveStorageV2.cancelGrantTransaction(
+            grant.id,
+            currentUser.name
+          )
+        } else if (grant.amount < originalGrant.amount) {
+          // 부분 취소 - 부여 분할 방식
+          // 1. 원본 부여 취소
+          await supabaseAnnualLeaveStorageV2.cancelTransaction(
+            grant.id,
+            currentUser.name
+          )
+          
+          // 2. 새로운 부여 생성 (원본 - 취소량)
+          const newGrantAmount = originalGrant.amount - grant.amount
+          await supabaseAnnualLeaveStorageV2.createTransaction({
+            member_id: data.memberId,
+            member_name: data.memberName,
+            transaction_type: originalGrant.transaction_type, // 원본과 동일한 타입
+            amount: newGrantAmount,
+            reason: `${originalGrant.reason} (부분 취소 후 재생성: ${newGrantAmount}일)`,
+            grant_date: originalGrant.grant_date,
+            expire_date: originalGrant.expire_date,
+            created_by: currentUser.name,
+          })
+          
+          // 3. 사용 내역들을 새 부여로 재연결
+          const { data: newGrant, error: findError } = await supabase
+            .from("annual_leave_transactions")
+            .select("id")
+            .eq("member_id", data.memberId)
+            .eq("transaction_type", originalGrant.transaction_type)
+            .eq("amount", newGrantAmount)
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single()
+          
+          if (findError) {
+            console.error("새 부여 조회 실패:", findError)
+          } else if (newGrant) {
+            // 기존 사용 내역들의 reference_id를 새 부여로 업데이트
+            for (const usage of usages) {
+              const { error: updateError } = await supabase
+                .from("annual_leave_transactions")
+                .update({ reference_id: newGrant.id })
+                .eq("id", usage.id)
+              
+              if (updateError) {
+                console.error(`사용 내역 ${usage.id} 업데이트 실패:`, updateError)
+              }
+            }
+            console.log(`${usages.length}개 사용 내역을 새 부여로 재연결 완료`)
+          }
+        }
+      }
+
+      console.log("부여 취소 거래 생성 완료, 잔액 업데이트 시작")
+
+      // 잔액 수동 업데이트 (V2 사용)
+      await supabaseAnnualLeaveStorageV2.updateMemberBalance(data.memberId)
+
+      // 데이터 새로고침
+      await loadData()
+
+      toast({
+        title: "연차 부여 취소 완료",
+        description: `${data.memberName}님의 연차 ${totalAmount}일이 취소되었습니다.`,
       })
+
+      // 다이얼로그 닫기
+      setGrantCancelDialogOpen(false)
+
+      console.log("부여 취소 처리 완료")
+    } catch (error) {
+      console.error("부여 취소 처리 실패:", error)
+      toast({
+        title: "처리 실패",
+        description: "부여 취소 처리에 실패했습니다.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleAdjustBalance = async (data: {
+    memberId: string
+    memberName: string
+    amount: number
+    reason: string
+    expireDays?: number
+  }) => {
+    try {
+      console.log("연차 처리 시작:", data)
+
+      const currentUser = await supabaseAuthStorage.getCurrentUser()
+      if (!currentUser) {
+        toast({
+          title: "오류",
+          description: "사용자 정보를 확인할 수 없습니다.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const isGrant = data.amount > 0
+      const today = new Date().toISOString().split("T")[0]
+      
+      // V2 시스템으로 거래 내역 생성
+      if (isGrant) {
+        // 수동 부여의 경우 grant_date와 expire_date 설정
+        const expireDate = new Date()
+        expireDate.setDate(expireDate.getDate() + (data.expireDays || 365))
+        
+        await supabaseAnnualLeaveStorageV2.createTransaction({
+          member_id: data.memberId,
+          member_name: data.memberName,
+          transaction_type: "manual_grant",
+          amount: data.amount,
+          reason: data.reason,
+          grant_date: today,
+          expire_date: expireDate.toISOString().split("T")[0],
+          created_by: currentUser.name,
+        })
+      } else {
+        // 차감은 부여 취소 다이얼로그로 처리하므로 여기서는 처리하지 않음
+        console.log("차감은 부여 취소 다이얼로그를 사용하세요")
+      }
 
       console.log("거래 내역 생성 완료, 잔액 업데이트 시작")
 
@@ -216,16 +336,16 @@ export default function AnnualLeavePage() {
       await loadData()
 
       toast({
-        title: "연차 조정 완료",
-        description: `${data.memberName}님의 연차가 ${data.amount > 0 ? "추가" : "차감"}되었습니다.`,
+        title: isGrant ? "연차 부여 완료" : "연차 차감 완료",
+        description: `${data.memberName}님의 연차 ${Math.abs(data.amount)}일이 ${isGrant ? "부여" : "차감"}되었습니다.`,
       })
 
-      console.log("연차 조정 완료")
+      console.log("연차 처리 완료")
     } catch (error) {
-      console.error("연차 조정 실패:", error)
+      console.error("연차 처리 실패:", error)
       toast({
-        title: "조정 실패",
-        description: "연차 조정에 실패했습니다.",
+        title: "처리 실패",
+        description: "연차 처리에 실패했습니다.",
         variant: "destructive",
       })
     }
@@ -260,72 +380,26 @@ export default function AnnualLeavePage() {
           <p className="text-gray-600">연차 정책 및 구성원별 연차 현황을 관리합니다</p>
         </div>
         <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => setPolicyViewDialogOpen(true)}
+            disabled={!activePolicy}
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            연차 정책 보기
+          </Button>
           <Button onClick={handleRunUpdate} disabled={updating}>
             {updating ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
             수동 업데이트
           </Button>
-          <Button
-            onClick={() => {
-              setEditingPolicy(null)
-              setPolicyDialogOpen(true)
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            정책 추가
-          </Button>
         </div>
       </div>
 
-      {/* 활성 정책 표시 */}
-      {activePolicy ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Settings className="h-5 w-5 mr-2" />
-                현재 활성 정책: {activePolicy.policy_name}
-              </div>
-              <Badge className="bg-green-100 text-green-800">활성</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <div className="font-medium text-gray-700">첫 해 월별 부여</div>
-                <div className="text-lg font-bold">{activePolicy.first_year_monthly_grant}일</div>
-              </div>
-              <div>
-                <div className="font-medium text-gray-700">기본 연차</div>
-                <div className="text-lg font-bold">{activePolicy.base_annual_days}일</div>
-              </div>
-              <div>
-                <div className="font-medium text-gray-700">최대 연차</div>
-                <div className="text-lg font-bold">{activePolicy.max_annual_days}일</div>
-              </div>
-              <div>
-                <div className="font-medium text-gray-700">소멸 기간</div>
-                <div className="text-lg font-bold">{activePolicy.expire_after_months}개월</div>
-              </div>
-            </div>
-            <div className="mt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setEditingPolicy(activePolicy)
-                  setPolicyDialogOpen(true)
-                }}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                정책 수정
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
+      {/* 활성 정책이 없을 때만 경고 표시 */}
+      {!activePolicy && (
         <Alert>
           <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>활성화된 연차 정책이 없습니다. 정책을 추가하고 활성화해주세요.</AlertDescription>
+          <AlertDescription>활성화된 연차 정책이 없습니다.</AlertDescription>
         </Alert>
       )}
 
@@ -354,7 +428,13 @@ export default function AnnualLeavePage() {
                   onAdjust={(balance, type) => {
                     setAdjustingBalance(balance)
                     setAdjustType(type)
-                    setAdjustDialogOpen(true)
+                    if (type === "expire") {
+                      // 차감의 경우 부여 취소 다이얼로그 사용
+                      setGrantCancelDialogOpen(true)
+                    } else {
+                      // 부여의 경우 기존 다이얼로그 사용
+                      setAdjustDialogOpen(true)
+                    }
                   }}
                 />
               ))}
@@ -371,6 +451,12 @@ export default function AnnualLeavePage() {
         onSave={handleSavePolicy}
       />
 
+      <AnnualLeavePolicyViewDialog
+        open={policyViewDialogOpen}
+        onOpenChange={setPolicyViewDialogOpen}
+        policy={activePolicy || null}
+      />
+
       <AnnualLeaveHistoryDialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen} balance={viewingBalance} />
 
       <AnnualLeaveAdjustDialog
@@ -379,6 +465,13 @@ export default function AnnualLeavePage() {
         balance={adjustingBalance}
         adjustType={adjustType}
         onSave={handleAdjustBalance}
+      />
+
+      <AnnualLeaveGrantCancelDialog
+        open={grantCancelDialogOpen}
+        onOpenChange={setGrantCancelDialogOpen}
+        balance={adjustingBalance}
+        onSave={handleGrantCancel}
       />
     </div>
   )
