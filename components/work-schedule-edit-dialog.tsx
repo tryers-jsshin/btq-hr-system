@@ -54,10 +54,6 @@ export function WorkScheduleEditDialog({ open, onOpenChange, member, workTypes, 
   }
 
   const getWorkTypeInfo = (workTypeId: string) => {
-    if (workTypeId === "off") {
-      return { name: "오프", time: "휴무", color: "bg-gray-200 text-gray-600" }
-    }
-
     const workType = workTypes.find((wt) => wt.id === workTypeId)
     if (!workType) {
       return { name: "미정", time: "-", color: "bg-gray-200 text-gray-600" }
@@ -157,7 +153,6 @@ export function WorkScheduleEditDialog({ open, onOpenChange, member, workTypes, 
                   <SelectValue placeholder="근무 형태를 선택하세요" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="off">오프 (휴무)</SelectItem>
                   {regularWorkTypes.map((workType) => (
                     <SelectItem key={workType.id} value={workType.id}>
                       {workType.name} ({workType.start_time.slice(0, 5)}-{workType.end_time.slice(0, 5)})

@@ -17,6 +17,7 @@ import { CalendarDays, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabaseLeaveRequestStorage } from "@/lib/supabase-leave-request-storage"
 import { supabaseWorkTypeStorage } from "@/lib/supabase-work-type-storage"
+import { supabase } from "@/lib/supabase"
 import type { LeaveRequestFormData, LeaveType } from "@/types/leave-request"
 import type { WorkTypeType } from "@/types/work-type"
 
@@ -44,16 +45,24 @@ export function LeaveRequestFormDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [leaveTypes, setLeaveTypes] = useState<WorkTypeType[]>([])
-  const [earliestExpireDate, setEarliestExpireDate] = useState<string | null>(null)
-  const [expireWarning, setExpireWarning] = useState<string | null>(null)
-  const [grantCount, setGrantCount] = useState(0) // 부여 개수 추가
-  const [expiryInfo, setExpiryInfo] = useState<{ date: string; amount: number }[]>([]) // 소멸 정보 배열
+  const [calculatedDays, setCalculatedDays] = useState<number>(0) // 계산된 연차 사용 일수
+  const [missingScheduleDates, setMissingScheduleDates] = useState<string[]>([]) // 근무표 미등록 날짜
+  const [isCalculating, setIsCalculating] = useState(false) // 계산 중 상태
 
-  // 휴가 유형 불러오기 및 소멸일 확인
+  // 휴가 유형 불러오기 및 폼 초기화
   useEffect(() => {
     if (open) {
       loadLeaveTypes()
-      loadExpireDates()
+      // 다이얼로그 열 때 폼 초기화
+      setFormData({
+        leave_type: "연차",
+        start_date: "",
+        end_date: "",
+        reason: "",
+      })
+      setCalculatedDays(0)
+      setMissingScheduleDates([])
+      setError(null)
     }
   }, [open])
 
@@ -72,40 +81,6 @@ export function LeaveRequestFormDialog({
       }
     } catch (error) {
       console.error("휴가 유형 로드 실패:", error)
-    }
-  }
-  
-  const loadExpireDates = async () => {
-    try {
-      // V2 스토리지에서 사용 가능한 부여 조회
-      const { supabaseAnnualLeaveStorageV2 } = await import("@/lib/supabase-annual-leave-storage-v2")
-      const availableGrants = await supabaseAnnualLeaveStorageV2.getAvailableGrants(memberId)
-      
-      // 부여 개수 저장
-      setGrantCount(availableGrants.length)
-      
-      // 소멸일별로 그룹화
-      const expiryGroups = new Map<string, number>()
-      for (const grant of availableGrants) {
-        if (grant.expire_date) {
-          const current = expiryGroups.get(grant.expire_date) || 0
-          expiryGroups.set(grant.expire_date, current + ((grant as any).availableAmount || grant.amount))
-        }
-      }
-      
-      // 소멸일 정보 배열 생성 (날짜순 정렬)
-      const expiryArray = Array.from(expiryGroups.entries())
-        .map(([date, amount]) => ({ date, amount }))
-        .sort((a, b) => a.date.localeCompare(b.date))
-      
-      setExpiryInfo(expiryArray)
-      
-      // 가장 빠른 소멸일 저장
-      if (expiryArray.length > 0) {
-        setEarliestExpireDate(expiryArray[0].date)
-      }
-    } catch (error) {
-      console.error("소멸일 정보 로드 실패:", error)
     }
   }
 
@@ -160,30 +135,154 @@ export function LeaveRequestFormDialog({
 
   const handleLeaveTypeChange = (value: LeaveType) => {
     setFormData((prev) => {
-      const newData = { ...prev, leave_type: value }
-      
-      // 1일이 아닌 휴가 선택 시 종료일을 시작일과 동일하게 설정 (반차 등)
-      const selectedLeaveType = leaveTypes.find(lt => lt.name === value)
-      if (selectedLeaveType && selectedLeaveType.deduction_days !== 1 && prev.start_date) {
-        newData.end_date = prev.start_date
+      const newData = { 
+        ...prev, 
+        leave_type: value,
+        start_date: "",  // 시작일 초기화
+        end_date: ""      // 종료일 초기화
       }
       
       return newData
     })
+    // 계산 관련 상태도 초기화
+    setCalculatedDays(0)
+    setMissingScheduleDates([])
   }
+
+  // 연차 사용 일수 계산 및 근무표 확인 (실제 근무표 기반, 오프일 제외)
+  const calculateLeaveDays = async (startDate: string, endDate: string, leaveType: string): Promise<number> => {
+    if (!startDate || !endDate) return 0
+    
+    const selectedLeaveType = leaveTypes.find(lt => lt.name === leaveType)
+    const deductionDays = selectedLeaveType?.deduction_days || 1
+    
+    try {
+      // 해당 기간의 근무 스케줄 조회
+      const { data: scheduleEntries, error } = await supabase
+        .from("work_schedule_entries")
+        .select("date, work_type_id")
+        .eq("member_id", memberId)
+        .gte("date", startDate)
+        .lte("date", endDate)
+        .order("date")
+      
+      if (error) {
+        console.error("근무 스케줄 조회 오류:", error)
+        return 0
+      }
+      
+      // 근무 유형 정보 가져오기
+      const { data: workTypes, error: workTypesError } = await supabase
+        .from("work_types")
+        .select("id, name, is_holiday")
+      
+      if (workTypesError) {
+        console.error("근무 유형 조회 오류:", workTypesError)
+        return 0
+      }
+      
+      // work_type_id를 name과 is_holiday로 매핑
+      const workTypeMap = new Map(workTypes?.map(wt => [wt.id, { name: wt.name, is_holiday: wt.is_holiday }]) || [])
+      
+      // 근무표 미등록 날짜 추적
+      const missingDates: string[] = []
+      
+      // 단일 날짜 휴가인 경우 (반차 등)
+      if (deductionDays !== 1) {
+        const entry = scheduleEntries?.find(e => e.date === startDate)
+        if (!entry) {
+          // 근무 스케줄이 없으면 미등록으로 기록
+          console.log(`${startDate}: 근무 스케줄 미등록`)
+          missingDates.push(startDate)
+          setMissingScheduleDates([startDate])
+          return -1 // 오류 표시용
+        }
+        const workTypeInfo = workTypeMap.get(entry.work_type_id)
+        const workTypeName = workTypeInfo?.name
+        const isHoliday = workTypeInfo?.is_holiday === true
+        console.log(`${startDate}: ${workTypeName} ${isHoliday ? '(휴무일 - 연차 0일 차감)' : '(근무일)'}`)
+        setMissingScheduleDates([])
+        return isHoliday ? 0 : deductionDays // 휴무일은 0일 차감
+      }
+      
+      // 전체 기간 연차인 경우
+      let count = 0
+      const start = new Date(startDate)
+      const end = new Date(endDate)
+      const current = new Date(start)
+      
+      const debugInfo: string[] = []
+      
+      while (current <= end) {
+        const dateStr = current.toISOString().split('T')[0]
+        const entry = scheduleEntries?.find(e => e.date === dateStr)
+        
+        if (!entry) {
+          // 근무 스케줄이 없으면 미등록으로 기록
+          debugInfo.push(`${dateStr}: 근무 스케줄 미등록`)
+          missingDates.push(dateStr)
+        } else {
+          const workTypeInfo = workTypeMap.get(entry.work_type_id)
+          const workTypeName = workTypeInfo?.name
+          const isHoliday = workTypeInfo?.is_holiday === true
+          debugInfo.push(`${dateStr}: ${workTypeName} ${isHoliday ? '(휴무일 - 제외)' : '(근무일 - 포함)'}`)
+          
+          if (!isHoliday) {
+            count++ // 휴무일이 아닌 경우만 카운트
+          }
+        }
+        
+        current.setDate(current.getDate() + 1)
+      }
+      
+      console.log('근무 스케줄 상세:', debugInfo)
+      console.log('미등록 날짜:', missingDates)
+      console.log('총 근무일수 (연차 차감일수):', count)
+      
+      // 미등록 날짜 업데이트
+      setMissingScheduleDates(missingDates)
+      
+      // 미등록 날짜가 있으면 -1 반환 (오류 표시용)
+      if (missingDates.length > 0) {
+        return -1
+      }
+      
+      return count
+    } catch (error) {
+      console.error("연차 일수 계산 오류:", error)
+      return 0
+    }
+  }
+
+  // 날짜 변경 시 연차 사용 일수 재계산
+  useEffect(() => {
+    const updateCalculatedDays = async () => {
+      if (formData.start_date && formData.end_date) {
+        setIsCalculating(true)
+        const days = await calculateLeaveDays(formData.start_date, formData.end_date, formData.leave_type)
+        setCalculatedDays(days)
+        setIsCalculating(false)
+      } else {
+        setCalculatedDays(0)
+        setIsCalculating(false)
+      }
+    }
+    
+    updateCalculatedDays()
+  }, [formData.start_date, formData.end_date, formData.leave_type, memberId])
 
   const handleStartDateChange = (value: string) => {
     setFormData((prev) => {
       const newData = { ...prev, start_date: value }
       
-      // 1일이 아닌 휴가이거나 종료일이 없으면 종료일을 시작일과 동일하게 설정
+      // 종료일 리셋
+      newData.end_date = ""
+      
+      // 1일이 아닌 휴가(반차 등)인 경우에만 종료일을 시작일과 동일하게 설정
       const selectedLeaveType = leaveTypes.find(lt => lt.name === prev.leave_type)
-      if ((selectedLeaveType && selectedLeaveType.deduction_days !== 1) || !prev.end_date) {
+      if (selectedLeaveType && selectedLeaveType.deduction_days !== 1) {
         newData.end_date = value
       }
-      
-      // 소멸일 검증
-      checkExpireDate(value, newData.end_date)
       
       return newData
     })
@@ -192,57 +291,29 @@ export function LeaveRequestFormDialog({
   const handleEndDateChange = (value: string) => {
     setFormData((prev) => {
       const newData = { ...prev, end_date: value }
-      
-      // 소멸일 검증
-      checkExpireDate(newData.start_date, value)
-      
       return newData
     })
   }
-  
-  const checkExpireDate = (startDate: string, endDate: string) => {
-    if (earliestExpireDate && endDate) {
-      const requestEnd = new Date(endDate)
-      const requestStart = new Date(startDate)
-      const expireDate = new Date(earliestExpireDate)
-      
-      // 신청 시작일이 소멸일 이후인 경우
-      if (requestStart > expireDate) {
-        if (grantCount === 1) {
-          setExpireWarning(
-            `보유하신 연차가 ${expireDate.toLocaleDateString("ko-KR")}에 모두 소멸 예정이므로, ` +
-            `해당 날짜 이후에는 사용할 수 없습니다.`
-          )
-        } else {
-          setExpireWarning(
-            `모든 연차가 ${expireDate.toLocaleDateString("ko-KR")}까지 소멸 예정이므로, ` +
-            `해당 날짜 이후에는 사용할 수 없습니다.`
-          )
-        }
-      }
-      // 신청 종료일이 소멸일 이후인 경우
-      else if (requestEnd > expireDate) {
-        if (grantCount === 1) {
-          setExpireWarning(
-            `보유하신 연차가 ${expireDate.toLocaleDateString("ko-KR")}에 소멸 예정입니다. ` +
-            `해당 날짜까지만 사용 가능합니다.`
-          )
-        } else {
-          setExpireWarning(
-            `일부 연차가 ${expireDate.toLocaleDateString("ko-KR")}에 소멸 예정입니다. ` +
-            `해당 날짜 이후 사용분은 다른 연차로 자동 배정되며, 잔여 연차가 부족한 경우 신청이 거부될 수 있습니다.`
-          )
-        }
-      } else {
-        setExpireWarning(null)
-      }
-    } else {
-      setExpireWarning(null)
+
+  // 다이얼로그 닫기 처리 (폼 리셋 포함)
+  const handleDialogClose = (newOpen: boolean) => {
+    if (!newOpen) {
+      // 다이얼로그 닫을 때 폼 초기화
+      setFormData({
+        leave_type: "연차",
+        start_date: "",
+        end_date: "",
+        reason: "",
+      })
+      setCalculatedDays(0)
+      setMissingScheduleDates([])
+      setError(null)
     }
+    onOpenChange(newOpen)
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -279,7 +350,7 @@ export function LeaveRequestFormDialog({
               <SelectContent>
                 {leaveTypes.map((leaveType) => (
                   <SelectItem key={leaveType.id} value={leaveType.name}>
-                    {leaveType.name} ({leaveType.deduction_days}일)
+                    {leaveType.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -317,14 +388,48 @@ export function LeaveRequestFormDialog({
             />
           </div>
 
-          {/* 소멸일 경고 메시지 */}
-          {expireWarning && (
-            <Alert className="border-orange-200 bg-orange-50">
-              <AlertCircle className="h-4 w-4 text-orange-600" />
-              <AlertDescription className="text-orange-800">
-                {expireWarning}
+          {/* 근무표 미등록 경고 */}
+          {missingScheduleDates.length > 0 && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="font-semibold mb-1">근무표가 등록되지 않은 날짜가 포함되어 있습니다</div>
+                <div className="text-sm mt-1">
+                  관리자에게 근무표 등록을 요청해주세요.
+                </div>
               </AlertDescription>
             </Alert>
+          )}
+          
+          {/* 연차 사용 일수 표시 */}
+          {formData.start_date && formData.end_date && missingScheduleDates.length === 0 && (
+            <>
+              {isCalculating ? (
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <div className="text-sm font-medium text-gray-600">
+                    연차 일수 계산 중...
+                  </div>
+                </div>
+              ) : calculatedDays === 0 ? (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    선택한 날짜가 모두 휴무일입니다. 근무일이 포함된 날짜를 선택해주세요.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="p-3 bg-green-50 rounded-lg">
+                  <div className="text-sm font-medium text-green-900">
+                    사용 예정 연차: <span className="text-lg font-bold">{calculatedDays}일</span>
+                  </div>
+                  {calculatedDays > currentBalance && (
+                    <div className="text-xs text-red-600 mt-1">
+                      ⚠️ 잔여 연차가 부족합니다
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
           
           {/* 단일 날짜 휴가 안내 메시지 */}
@@ -336,36 +441,6 @@ export function LeaveRequestFormDialog({
               <div className="text-sm text-yellow-800">
                 <strong>안내:</strong> 해당 휴가 유형은 단일 날짜만 신청 가능합니다.
               </div>
-            </div>
-          )}
-          
-          {/* 소멸일 정보 표시 */}
-          {expiryInfo.length > 0 && (
-            <div className="p-3 bg-blue-50 rounded-lg space-y-2">
-              {expiryInfo.length === 1 ? (
-                // 소멸일이 1개인 경우: 간단하게 표시
-                <div className="text-sm text-blue-800">
-                  <strong>연차 소멸 예정:</strong> {new Date(expiryInfo[0].date).toLocaleDateString("ko-KR")}에 {expiryInfo[0].amount}일
-                </div>
-              ) : (
-                // 소멸일이 여러 개인 경우: 가장 가까운 것 강조 + 나머지 작게
-                <>
-                  <div className="text-sm text-blue-900 font-medium">
-                    <strong>🔔 다음 소멸:</strong> {new Date(expiryInfo[0].date).toLocaleDateString("ko-KR")}에 {expiryInfo[0].amount}일
-                  </div>
-                  {expiryInfo.length === 2 ? (
-                    // 2개인 경우: 나머지 1개도 표시
-                    <div className="text-xs text-blue-700 pl-6">
-                      이후: {new Date(expiryInfo[1].date).toLocaleDateString("ko-KR")}에 {expiryInfo[1].amount}일
-                    </div>
-                  ) : (
-                    // 3개 이상인 경우: 축약 표시
-                    <div className="text-xs text-blue-700 pl-6">
-                      그 외 {expiryInfo.length - 1}건의 소멸 예정 (총 {expiryInfo.slice(1).reduce((sum, info) => sum + info.amount, 0)}일)
-                    </div>
-                  )}
-                </>
-              )}
             </div>
           )}
 
@@ -385,12 +460,12 @@ export function LeaveRequestFormDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleDialogClose(false)}
               disabled={loading}
             >
               취소
             </Button>
-            <Button type="submit" disabled={loading || currentBalance <= 0}>
+            <Button type="submit" disabled={loading || currentBalance <= 0 || missingScheduleDates.length > 0 || (formData.start_date && formData.end_date && calculatedDays === 0)}>
               {loading ? "신청 중..." : "신청하기"}
             </Button>
           </DialogFooter>

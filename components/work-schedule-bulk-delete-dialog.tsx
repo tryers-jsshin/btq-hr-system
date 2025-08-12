@@ -129,10 +129,6 @@ export function WorkScheduleBulkDeleteDialog({ open, onOpenChange, onDelete }: W
   }
 
   const getWorkTypeInfo = (workTypeId: string) => {
-    if (workTypeId === "off") {
-      return { name: "오프", bgcolor: "#e5e7eb", fontcolor: "#4b5563" }
-    }
-
     const workType = workTypes.find((wt) => wt.id === workTypeId)
     if (!workType) {
       return { name: "알 수 없음", bgcolor: "#6b7280", fontcolor: "#ffffff" }

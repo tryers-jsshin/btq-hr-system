@@ -48,9 +48,6 @@ export function MemberDetailDialog({ open, onOpenChange, member }: MemberDetailD
     if (workTypeId === "") {
       return { name: "미설정", bgcolor: "#f3f4f6", fontcolor: "#6b7280" }
     }
-    if (workTypeId === "off") {
-      return { name: "오프", bgcolor: "#e5e7eb", fontcolor: "#4b5563" }
-    }
 
     const workType = workTypes.find((wt) => wt.id === workTypeId)
     if (!workType) {

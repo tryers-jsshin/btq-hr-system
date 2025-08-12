@@ -90,8 +90,8 @@ class SupabaseAnnualLeaveStorageV2 {
 
     return (data as AnnualLeaveTransaction[]) || []
   }
-
-  // 모든 트랜잭션 조회 (취소된 것 포함)
+  
+  // 모든 거래 내역 조회 (cancelled 포함) - 부여 중복 확인용
   async getAllTransactionsByMemberId(memberId: string): Promise<AnnualLeaveTransaction[]> {
     const { data, error } = await supabase
       .from("annual_leave_transactions")

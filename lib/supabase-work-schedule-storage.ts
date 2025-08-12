@@ -109,18 +109,13 @@ export const supabaseWorkScheduleStorage = {
             if (scheduleEntry) {
               workTypeId = scheduleEntry.work_type_id
 
-              if (workTypeId === "off") {
-                workTypeName = "오프"
-                workTypeColor = "bg-gray-200 text-gray-600"
-              } else {
-                const workType = workTypes.find((wt) => wt.id === workTypeId)
-                if (workType) {
-                  workTypeName = workType.name
-                  startTime = workType.start_time
-                  endTime = workType.end_time
-                  // 동적 색상 적용
-                  workTypeColor = `${workType.bgcolor} ${workType.fontcolor}`
-                }
+              const workType = workTypes.find((wt) => wt.id === workTypeId)
+              if (workType) {
+                workTypeName = workType.name
+                startTime = workType.start_time
+                endTime = workType.end_time
+                // 동적 색상 적용
+                workTypeColor = `${workType.bgcolor} ${workType.fontcolor}`
               }
             }
 
@@ -498,6 +493,28 @@ export const supabaseWorkScheduleStorage = {
   async upsertWorkSchedule(memberId: string, date: string, workTypeId: string): Promise<void> {
     try {
       console.log(`Upserting work schedule: member=${memberId}, date=${date}, workType=${workTypeId}`)
+      
+      // 현재 근무표 확인
+      const { data: existingSchedule } = await supabase
+        .from("work_schedule_entries")
+        .select("work_type_id")
+        .eq("member_id", memberId)
+        .eq("date", date)
+        .single()
+      
+      // 휴무일 여부 확인
+      if (existingSchedule) {
+        const { data: workType } = await supabase
+          .from("work_types")
+          .select("is_holiday, name")
+          .eq("id", existingSchedule.work_type_id)
+          .single()
+        
+        if (workType?.is_holiday) {
+          console.log(`${date}은(는) 휴무일(${workType.name})이므로 근무표를 변경하지 않음`)
+          return // 휴무일은 근무표 변경하지 않음
+        }
+      }
       
       const { error } = await supabase
         .from("work_schedule_entries")

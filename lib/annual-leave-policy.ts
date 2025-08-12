@@ -63,9 +63,9 @@ export class AnnualLeavePolicyEngine {
     let nextGrantDate: string | undefined
     let nextExpireDate: string | undefined
 
-    // 기존 거래 내역 조회 (V2 사용 - 활성 트랜잭션만)
-    const transactions = await supabaseAnnualLeaveStorageV2.getActiveTransactionsByMemberId(member.id)
-    console.log(`기존 거래 내역: ${transactions.length}건`)
+    // 모든 거래 내역 조회 (cancelled 포함) - 중복 부여 방지를 위해
+    const transactions = await supabaseAnnualLeaveStorageV2.getAllTransactionsByMemberId(member.id)
+    console.log(`전체 거래 내역: ${transactions.length}건 (cancelled 포함)`)
     
     // 디버깅: manual_grant 확인
     const manualGrants = transactions.filter(t => t.transaction_type === "manual_grant")
@@ -153,10 +153,11 @@ export class AnnualLeavePolicyEngine {
 
     console.log(`  현재 연차 구간: ${currentServiceYears}년차 (${currentAnniversaryYear}년 기준)`)
 
-    // 현재 구간의 연차가 이미 부여되었는지 확인
+    // 현재 구간의 연차가 이미 부여되었는지 확인 (취소된 것 제외)
     const hasCurrentYearGrant = transactions.some(
       (t) =>
         t.transaction_type === "grant" &&
+        t.status !== "cancelled" &&
         t.grant_date &&
         new Date(t.grant_date).getFullYear() === currentAnniversaryYear &&
         t.reason.includes("연간 부여"),
@@ -232,10 +233,11 @@ export class AnnualLeavePolicyEngine {
       `  현재 연차 구간: ${currentAnniversaryYear}년 (${currentAnniversaryDate.toISOString().split("T")[0]} 기준)`,
     )
 
-    // 현재 구간의 연차가 이미 부여되었는지 확인
+    // 현재 구간의 연차가 이미 부여되었는지 확인 (취소된 것 제외)
     const hasCurrentYearGrant = transactions.some(
       (t) =>
         t.transaction_type === "grant" &&
+        t.status !== "cancelled" &&
         t.grant_date &&
         new Date(t.grant_date).getFullYear() === currentAnniversaryYear &&
         t.reason.includes("연간 부여"),
@@ -354,27 +356,66 @@ export class AnnualLeavePolicyEngine {
   ): MonthlyGrantInfo[] {
     if (!this.policy) return []
 
-    const monthlyGrantsReceived = this.countMonthlyGrants(transactions)
-    const shouldHaveReceived = this.calculateShouldHaveReceivedMonthlyGrants(joinDate, targetDate)
-    const missedGrants = Math.max(0, shouldHaveReceived - monthlyGrantsReceived)
-
-    if (missedGrants === 0) return []
+    console.log(`\n[calculateMissedMonthlyGrants] 시작`)
+    console.log(`  입사일: ${joinDate.toISOString().split('T')[0]}`)
+    console.log(`  기준일: ${targetDate.toISOString().split('T')[0]}`)
+    console.log(`  전체 트랜잭션 수: ${transactions.length}`)
+    
+    // 월별 부여만 필터링해서 확인
+    const monthlyGrants = transactions.filter(t => 
+      t.transaction_type === "grant" && 
+      t.reason.includes("월별 부여")
+    )
+    console.log(`  월별 부여 트랜잭션: ${monthlyGrants.length}건`)
+    monthlyGrants.forEach(t => {
+      console.log(`    - ${t.reason}, status: ${t.status}, cancelled_at: ${t.cancelled_at}`)
+    })
 
     const missedGrantInfos: MonthlyGrantInfo[] = []
-    const actualGrantsToday = Math.min(missedGrants, this.policy.first_year_max_days - monthlyGrantsReceived)
+    const maxGrants = this.policy.first_year_max_days
 
-    // 각 누락된 개월차별로 개별 부여 정보 생성
-    for (let i = 0; i < actualGrantsToday; i++) {
-      const grantNumber = monthlyGrantsReceived + i + 1
-      const grantDate = this.calculateNextMonthlyGrantDate(joinDate, grantNumber)
+    // 각 개월차별로 이미 부여되었는지 확인
+    for (let monthNumber = 1; monthNumber <= maxGrants; monthNumber++) {
+      const grantDate = this.calculateNextMonthlyGrantDate(joinDate, monthNumber)
+      
+      // 아직 부여일이 도래하지 않았으면 건너뛰기
+      if (grantDate > targetDate) {
+        console.log(`  ${monthNumber}개월차: 아직 부여일 미도래`)
+        break
+      }
 
-      missedGrantInfos.push({
-        amount: this.policy.first_year_monthly_grant,
-        reason: `월별 부여 (입사 ${grantNumber}개월차)`,
-        grantDate: grantDate,
+      const expectedReason = `월별 부여 (입사 ${monthNumber}개월차)`
+      
+      // 해당 개월차가 이미 부여되었는지 확인 (취소된 것 제외)
+      const existingGrants = transactions.filter(t => 
+        t.transaction_type === "grant" &&
+        t.reason === expectedReason
+      )
+      
+      console.log(`  ${monthNumber}개월차 확인:`)
+      console.log(`    찾는 문자열: "${expectedReason}"`)
+      console.log(`    매칭된 트랜잭션: ${existingGrants.length}건`)
+      existingGrants.forEach(t => {
+        console.log(`      - status: ${t.status}, cancelled: ${t.status === 'cancelled'}`)
       })
+      
+      // 해당 개월차 부여가 존재하는지 확인 (cancelled 포함)
+      // cancelled도 "이미 부여했었음"을 의미하므로 다시 부여하면 안 됨
+      const alreadyGranted = existingGrants.length > 0
+      
+      if (!alreadyGranted) {
+        console.log(`    → 누락! 부여 예정`)
+        missedGrantInfos.push({
+          amount: this.policy.first_year_monthly_grant,
+          reason: expectedReason,
+          grantDate: grantDate,
+        })
+      } else {
+        console.log(`    → 이미 부여됨 (cancelled 포함)`)
+      }
     }
 
+    console.log(`[calculateMissedMonthlyGrants] 결과: ${missedGrantInfos.length}건 누락`)
     return missedGrantInfos
   }
 
@@ -628,11 +669,19 @@ export class AnnualLeavePolicyEngine {
   }
 
   private countMonthlyGrants(transactions: AnnualLeaveTransaction[]): number {
-    return transactions.filter((t) => t.transaction_type === "grant" && t.reason.includes("월별 부여")).length
+    return transactions.filter((t) => 
+      t.transaction_type === "grant" && 
+      t.status !== "cancelled" &&
+      t.reason.includes("월별 부여")
+    ).length
   }
 
   private countAnnualGrants(transactions: AnnualLeaveTransaction[]): number {
-    return transactions.filter((t) => t.transaction_type === "grant" && t.reason.includes("연간 부여")).length
+    return transactions.filter((t) => 
+      t.transaction_type === "grant" && 
+      t.status !== "cancelled" &&
+      t.reason.includes("연간 부여")
+    ).length
   }
 
   private isSameDate(date1: Date, date2: Date): boolean {
@@ -864,17 +913,19 @@ export class AnnualLeavePolicyEngine {
     const currentAnniversaryYear = this.getCurrentAnniversaryYear(joinDate, targetDate)
     const currentServiceYears = currentAnniversaryYear - joinDate.getFullYear()
 
-    // 현재 구간의 연차가 이미 부여되었는지 확인
+    // 특정 년차 문자열로 확인 (예: "연간 부여 (입사 2년차)")
+    const expectedReason = `연간 부여 (입사 ${currentServiceYears}년차)`
+    
+    // 현재 구간의 연차가 이미 부여되었는지 확인 (cancelled 포함)
+    // cancelled도 "이미 부여했었음"을 의미하므로 다시 부여하면 안 됨
     const hasCurrentYearGrant = transactions.some(
       (t) =>
         t.transaction_type === "grant" &&
-        t.grant_date &&
-        new Date(t.grant_date).getFullYear() === currentAnniversaryYear &&
-        t.reason.includes("연간 부여"),
+        t.reason === expectedReason  // 정확한 년차 매칭 (status 무관)
     )
 
     if (hasCurrentYearGrant) {
-      console.log(`  현재 ${currentServiceYears}년차 연차는 이미 부여됨`)
+      console.log(`  현재 ${currentServiceYears}년차 연차는 이미 부여됨 (cancelled 포함)`)
       return []
     }
 
@@ -888,7 +939,7 @@ export class AnnualLeavePolicyEngine {
     return [
       {
         amount: annualDays,
-        reason: `연간 부여 (입사 ${currentServiceYears}년차)`,
+        reason: expectedReason,
         serviceYears: currentServiceYears,
         anniversaryDate: anniversaryDate,
       },
@@ -925,7 +976,8 @@ export async function runDailyAnnualLeaveUpdate(targetDate: Date = new Date()): 
             const member = await supabase.from("members").select("join_date").eq("id", calc.member_id).single()
             if (member.data) {
               const joinDate = new Date(member.data.join_date)
-              const transactions = await supabaseAnnualLeaveStorageV2.getActiveTransactionsByMemberId(calc.member_id)
+              // 모든 트랜잭션 조회 (cancelled 포함) - 중복 부여 방지를 위해
+              const transactions = await supabaseAnnualLeaveStorageV2.getAllTransactionsByMemberId(calc.member_id)
               const missedGrants = engine.calculateMissedMonthlyGrants(joinDate, targetDate, transactions)
 
               // 각 누락된 개월차별로 실제 부여일로 소급 부여
@@ -946,7 +998,8 @@ export async function runDailyAnnualLeaveUpdate(targetDate: Date = new Date()): 
             const member = await supabase.from("members").select("join_date").eq("id", calc.member_id).single()
             if (member.data) {
               const joinDate = new Date(member.data.join_date)
-              const transactions = await supabaseAnnualLeaveStorageV2.getActiveTransactionsByMemberId(calc.member_id)
+              // 모든 트랜잭션 조회 (cancelled 포함) - 중복 부여 방지를 위해
+              const transactions = await supabaseAnnualLeaveStorageV2.getAllTransactionsByMemberId(calc.member_id)
               const missedGrants = engine.calculateMissedAnnualGrants(joinDate, targetDate, transactions)
 
               // 각 누락된 기념일별로 실제 기념일로 소급 부여

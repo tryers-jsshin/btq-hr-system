@@ -38,6 +38,7 @@ export function WorkTypeFormDialog({ open, onOpenChange, workType, onSave, isLea
     bgcolor: "#3b82f6",
     fontcolor: "#ffffff",
     deduction_days: 1.0,
+    is_holiday: false,
   })
   const [isFullDay, setIsFullDay] = useState(true) // 종일 휴가 여부
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
@@ -52,6 +53,7 @@ export function WorkTypeFormDialog({ open, onOpenChange, workType, onSave, isLea
         bgcolor: workType.bgcolor,
         fontcolor: workType.fontcolor,
         deduction_days: workType.deduction_days || (isLeaveType ? 1.0 : 0),
+        is_holiday: workType.is_holiday || false,
       })
       setIsFullDay(isLeaveType ? isWorkTypeFullDay : false)
     } else {
@@ -62,6 +64,7 @@ export function WorkTypeFormDialog({ open, onOpenChange, workType, onSave, isLea
         bgcolor: "#3b82f6",
         fontcolor: "#ffffff",
         deduction_days: isLeaveType ? 1.0 : 0,
+        is_holiday: false,
       })
       setIsFullDay(isLeaveType)
     }
@@ -131,9 +134,15 @@ export function WorkTypeFormDialog({ open, onOpenChange, workType, onSave, isLea
       submitData.end_time = "23:59:59"
     }
     
-    // 일반 근무 유형인 경우 deduction_days를 null로 설정 (또는 제거)
+    // 일반 근무 유형인 경우
     if (!isLeaveType) {
+      // deduction_days를 undefined로 설정
       submitData = { ...submitData, deduction_days: undefined }
+      // 휴무일이면 시간을 하루 종일로 설정 (이미 체크박스 변경 시 설정되지만 확실하게)
+      if (submitData.is_holiday) {
+        submitData.start_time = "00:00:00"
+        submitData.end_time = "23:59:59"
+      }
     }
 
     onSave(submitData)
@@ -245,31 +254,61 @@ export function WorkTypeFormDialog({ open, onOpenChange, workType, onSave, isLea
               )}
 
               {!isLeaveType && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="start_time">시작 시간</Label>
-                    <Input
-                      id="start_time"
-                      type="time"
-                      value={formData.start_time}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, start_time: e.target.value }))}
-                      className={errors.start_time ? "border-red-500" : ""}
-                    />
-                    {errors.start_time && <p className="text-sm text-red-500">{errors.start_time}</p>}
-                  </div>
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="start_time">시작 시간</Label>
+                      <Input
+                        id="start_time"
+                        type="time"
+                        value={formData.start_time}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, start_time: e.target.value }))}
+                        className={errors.start_time ? "border-red-500" : ""}
+                        disabled={formData.is_holiday}
+                      />
+                      {errors.start_time && <p className="text-sm text-red-500">{errors.start_time}</p>}
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="end_time">종료 시간</Label>
-                    <Input
-                      id="end_time"
-                      type="time"
-                      value={formData.end_time}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, end_time: e.target.value }))}
-                      className={errors.end_time ? "border-red-500" : ""}
-                    />
-                    {errors.end_time && <p className="text-sm text-red-500">{errors.end_time}</p>}
+                    <div className="space-y-2">
+                      <Label htmlFor="end_time">종료 시간</Label>
+                      <Input
+                        id="end_time"
+                        type="time"
+                        value={formData.end_time}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, end_time: e.target.value }))}
+                        className={errors.end_time ? "border-red-500" : ""}
+                        disabled={formData.is_holiday}
+                      />
+                      {errors.end_time && <p className="text-sm text-red-500">{errors.end_time}</p>}
+                    </div>
                   </div>
-                </div>
+                  
+                  {/* 휴무일 체크박스 */}
+                  <div className="flex items-center space-x-2 pt-4">
+                    <input
+                      type="checkbox"
+                      id="is_holiday"
+                      checked={formData.is_holiday}
+                      onChange={(e) => {
+                        const isHoliday = e.target.checked
+                        setFormData((prev) => ({ 
+                          ...prev, 
+                          is_holiday: isHoliday,
+                          // 휴무일이면 하루 종일로 자동 설정
+                          start_time: isHoliday ? "00:00:00" : prev.start_time,
+                          end_time: isHoliday ? "23:59:59" : prev.end_time
+                        }))
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <Label htmlFor="is_holiday" className="text-sm font-medium">
+                      휴무일 (오프, 공휴일 등)
+                    </Label>
+                    <span className="text-xs text-gray-500">
+                      - 연차 계산에서 제외됩니다
+                    </span>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

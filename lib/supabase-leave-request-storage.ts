@@ -60,7 +60,7 @@ export class SupabaseLeaveRequestStorage {
     )
     
     if (workingDays.length === 0) {
-      throw new Error("신청 기간에 근무일이 없습니다.")
+      throw new Error("선택한 날짜가 모두 휴무일입니다. 근무일이 포함된 날짜를 선택해주세요.")
     }
     
     // 연차 소모량 계산
@@ -321,28 +321,30 @@ export class SupabaseLeaveRequestStorage {
       throw new Error("취소 대상 연차 신청을 찾을 수 없습니다.")
     }
 
-    // 권한 확인: 대기중 상태는 누구나, 승인됨 상태는 관리자만
+    // 권한 확인: 대기중 상태는 본인만, 승인됨 상태는 관리자만
     if (request.status === "승인됨") {
       // 관리자 권한 확인 (cancelled_by가 관리자인지 확인)
       const { data: user } = await supabase
         .from("members")
-        .select("is_admin")
+        .select("is_admin, name")
         .eq("name", cancellationData.cancelled_by)
         .single()
       
       if (!user?.is_admin) {
-        // 본인 확인
-        if (request.member_name !== cancellationData.cancelled_by) {
-          throw new Error("승인된 연차는 관리자만 취소할 수 있습니다.")
-        }
+        throw new Error("승인된 연차는 관리자만 취소할 수 있습니다.")
+      }
+    } else if (request.status === "대기중") {
+      // 대기중 상태는 본인만 취소 가능
+      if (request.member_name !== cancellationData.cancelled_by) {
+        // 관리자인지 확인
+        const { data: user } = await supabase
+          .from("members")
+          .select("is_admin")
+          .eq("name", cancellationData.cancelled_by)
+          .single()
         
-        // 시작일 확인 (본인도 시작일 이후는 취소 불가)
-        const startDate = new Date(request.start_date)
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        
-        if (startDate <= today) {
-          throw new Error("시작일이 지난 연차는 취소할 수 없습니다.")
+        if (!user?.is_admin) {
+          throw new Error("대기중인 연차는 본인 또는 관리자만 취소할 수 있습니다.")
         }
       }
     }
@@ -447,7 +449,7 @@ export class SupabaseLeaveRequestStorage {
     }
   }
 
-  // 근무일 계산 (오프 제외) - 실제 근무표만 확인
+  // 근무일 계산 (휴무일 제외) - 실제 근무표만 확인
   private async calculateWorkingDays(
     startDate: string,
     endDate: string,
@@ -458,6 +460,15 @@ export class SupabaseLeaveRequestStorage {
     const workingDays: string[] = []
     const start = new Date(startDate)
     const end = new Date(endDate)
+
+    // 휴무일 work_type IDs 조회 (is_holiday = true)
+    const { data: holidayWorkTypes } = await supabase
+      .from("work_types")
+      .select("id, name")
+      .eq("is_holiday", true)
+    
+    const holidayWorkTypeIds = new Set(holidayWorkTypes?.map(wt => wt.id) || [])
+    console.log("휴무일 유형 IDs:", Array.from(holidayWorkTypeIds))
 
     // 실제 근무표에서 해당 기간의 모든 일정 조회
     const { data: schedules } = await supabase
@@ -474,25 +485,37 @@ export class SupabaseLeaveRequestStorage {
     // 1일이 아닌 휴가는 단일 날짜만 (반차 등)
     if (deductionDays && deductionDays !== 1) {
       const workType = scheduleMap.get(startDate)
-      // 오프가 아닌 경우 (근무표 없음, pending, 실제 근무 모두 포함)
-      if (workType !== "off") {
+      // 휴무일이더라도 카운트하지 않음 (비어있는 배열 반환)
+      if (workType && holidayWorkTypeIds.has(workType)) {
+        console.log(`${startDate}은(는) 휴무일이므로 연차 차감 0일`)
+        // 휴무일은 연차 차감에서 제외
+        return []
+      } else {
         workingDays.push(startDate)
       }
       return workingDays
     }
 
-    // 연차는 범위 내 모든 근무일
+    // 연차는 범위 내 모든 근무일 (휴무일 제외)
     const current = new Date(start)
+    let excludedHolidays = 0
     while (current <= end) {
       const dateStr = current.toISOString().split("T")[0]
       const workType = scheduleMap.get(dateStr)
       
-      // 오프가 아닌 경우 (근무표 없음, pending, 실제 근무 모두 포함)
-      if (workType !== "off") {
+      // 휴무일은 연차 차감에서 제외
+      if (workType && holidayWorkTypeIds.has(workType)) {
+        excludedHolidays++
+        console.log(`${dateStr}은(는) 휴무일이므로 연차 차감에서 제외`)
+      } else {
         workingDays.push(dateStr)
       }
       
       current.setDate(current.getDate() + 1)
+    }
+    
+    if (excludedHolidays > 0) {
+      console.log(`총 ${excludedHolidays}일의 휴무일이 연차 차감에서 제외됨`)
     }
 
     return workingDays
@@ -579,6 +602,14 @@ export class SupabaseLeaveRequestStorage {
       return
     }
 
+    // 휴무일 유형 IDs 조회 (is_holiday = true)
+    const { data: holidayWorkTypes } = await supabase
+      .from("work_types")
+      .select("id, name")
+      .eq("is_holiday", true)
+    
+    const holidayWorkTypeIds = new Set(holidayWorkTypes?.map(wt => wt.id) || [])
+
     const start = new Date(request.start_date)
     const end = new Date(request.end_date)
     const current = new Date(start)
@@ -594,11 +625,20 @@ export class SupabaseLeaveRequestStorage {
         .eq("date", dateStr)
         .single()
       
-      // 오프가 아닌 경우만 연차로 업데이트
-      if (existingSchedule?.work_type_id !== "off") {
-        try {
-          if (existingSchedule) {
-            // 기존 근무가 있으면 백업 후 업데이트
+      // 휴무일 체크 및 처리
+      if (existingSchedule) {
+        // 기존 스케줄이 휴무일인지 확인
+        if (holidayWorkTypeIds.has(existingSchedule.work_type_id)) {
+          // 휴무일인 경우 근무표 변경하지 않음
+          const { data: holidayType } = await supabase
+            .from("work_types")
+            .select("name")
+            .eq("id", existingSchedule.work_type_id)
+            .single()
+          console.log(`${dateStr}는 휴무일(${holidayType?.name})이므로 근무표를 변경하지 않습니다`)
+        } else {
+          // 휴무일이 아닌 경우 연차로 업데이트
+          try {
             await supabase
               .from("work_schedule_entries")
               .update({
@@ -607,22 +647,26 @@ export class SupabaseLeaveRequestStorage {
                 replaced_by_leave_id: request.id // 연차 신청 ID 저장
               })
               .eq("id", existingSchedule.id)
-          } else {
-            // 기존 근무가 없으면 새로 생성
-            await supabase
-              .from("work_schedule_entries")
-              .insert({
-                member_id: request.member_id,
-                date: dateStr,
-                work_type_id: workTypeId,
-                replaced_by_leave_id: request.id
-              })
+            console.log(`${dateStr} 근무표를 연차로 업데이트`)
+          } catch (error) {
+            console.error(`근무표 업데이트 오류 (${dateStr}):`, error)
           }
-        } catch (error) {
-          console.error(`근무표 업데이트 오류 (${dateStr}):`, error)
         }
       } else {
-        console.log(`${dateStr}는 오프이므로 건너뜀입니다`)
+        // 기존 근무가 없으면 새로 생성
+        try {
+          await supabase
+            .from("work_schedule_entries")
+            .insert({
+              member_id: request.member_id,
+              date: dateStr,
+              work_type_id: workTypeId,
+              replaced_by_leave_id: request.id
+            })
+          console.log(`${dateStr} 근무표 새로 생성`)
+        } catch (error) {
+          console.error(`근무표 생성 오류 (${dateStr}):`, error)
+        }
       }
       
       current.setDate(current.getDate() + 1)

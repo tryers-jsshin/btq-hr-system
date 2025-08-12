@@ -177,10 +177,7 @@ export default function WorkScheduleManage() {
                 let startTime: string | undefined
                 let endTime: string | undefined
 
-                if (newWorkTypeId === "off") {
-                  workTypeName = "오프"
-                  workTypeColor = "bg-gray-200 text-gray-600"
-                } else if (workType) {
+                if (workType) {
                   workTypeName = workType.name
                   startTime = workType.start_time
                   endTime = workType.end_time
@@ -358,7 +355,6 @@ export default function WorkScheduleManage() {
   }
 
   const getWorkTypeName = (workTypeId: string) => {
-    if (workTypeId === "off") return "오프"
     const workType = workTypes.find((wt) => wt.id === workTypeId)
     return workType?.name || "미정"
   }

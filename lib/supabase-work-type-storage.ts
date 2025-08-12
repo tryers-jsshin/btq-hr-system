@@ -24,6 +24,7 @@ export const supabaseWorkTypeStorage = {
           bgcolor: workType.bgcolor,
           fontcolor: workType.fontcolor,
           is_leave: workType.is_leave || false,
+          is_holiday: workType.is_holiday || false,
           deduction_days: workType.deduction_days !== undefined ? workType.deduction_days : null,
         },
       ])
@@ -51,6 +52,7 @@ export const supabaseWorkTypeStorage = {
         bgcolor: workType.bgcolor,
         fontcolor: workType.fontcolor,
         is_leave: workType.is_leave,
+        is_holiday: workType.is_holiday,
         deduction_days: workType.deduction_days !== undefined ? workType.deduction_days : undefined,
         updated_at: new Date().toISOString(),
       })
