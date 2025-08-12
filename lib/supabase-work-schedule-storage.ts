@@ -220,6 +220,21 @@ export const supabaseWorkScheduleStorage = {
 
         totalUpdated += data?.length || batch.length
         console.log(`Batch ${Math.floor(i / batchSize) + 1} completed, updated: ${data?.length || batch.length}`)
+        
+        // 근태 기록 업데이트 - 각 배치의 날짜별로 업데이트
+        const uniqueDates = [...new Set(batch.map(entry => entry.date))]
+        console.log(`[batchUpdateSchedule] Updating attendance for ${uniqueDates.length} dates:`, uniqueDates)
+        
+        for (const date of uniqueDates) {
+          try {
+            console.log(`[batchUpdateSchedule] Refreshing attendance for date: ${date}`)
+            const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+            await supabaseAttendanceStorage.refreshAttendanceForDate(date)
+            console.log(`[batchUpdateSchedule] Successfully refreshed attendance for date: ${date}`)
+          } catch (error) {
+            console.error(`[batchUpdateSchedule] Failed to refresh attendance for date ${date}:`, error)
+          }
+        }
       }
 
       console.log(`Successfully updated ${totalUpdated} schedule entries`)
@@ -388,6 +403,19 @@ export const supabaseWorkScheduleStorage = {
 
         totalCreated += data?.length || batch.length
         console.log(`Batch completed, created: ${data?.length || batch.length}`)
+        
+        // 근태 기록 업데이트 - 생성된 각 날짜에 대해 업데이트
+        const uniqueDates = [...new Set(batch.map(entry => entry.date))]
+        console.log(`Updating attendance for ${uniqueDates.length} dates`)
+        
+        for (const date of uniqueDates) {
+          try {
+            const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+            await supabaseAttendanceStorage.refreshAttendanceForDate(date)
+          } catch (error) {
+            console.error(`Failed to refresh attendance for date ${date}:`, error)
+          }
+        }
       }
 
       console.log(`Successfully created ${totalCreated} schedule entries`)
@@ -430,7 +458,7 @@ export const supabaseWorkScheduleStorage = {
       // 삭제할 엔트리 조회 (연차 구분)
       const { data: existingEntries, error: selectError } = await supabase
         .from("work_schedule_entries")
-        .select("id, work_type_id")
+        .select("id, work_type_id, member_id, date")
         .in("member_id", memberIds)
         .gte("date", startDate)
         .lte("date", endDate)
@@ -457,8 +485,32 @@ export const supabaseWorkScheduleStorage = {
         return {deleted: 0, protectedLeave: leaveEntries.length}
       }
 
-      // 연차가 아닌 엔트리만 삭제
+      // 삭제하기 전에 관련 근태 기록의 schedule_id를 null로 업데이트
       const regularEntryIds = regularEntries.map(entry => entry.id)
+      
+      console.log("Updating attendance records to remove schedule references...")
+      const { error: updateAttendanceError } = await supabase
+        .from("attendance_records")
+        .update({
+          schedule_id: null,
+          work_type_id: null,
+          scheduled_start_time: null,
+          scheduled_end_time: null,
+          // 근무표가 없으면 지각/초과근무 계산 초기화
+          is_late: false,
+          late_minutes: 0,
+          is_early_leave: false,
+          early_leave_minutes: 0,
+          overtime_minutes: 0
+        })
+        .in("schedule_id", regularEntryIds)
+      
+      if (updateAttendanceError) {
+        console.error("Error updating attendance records:", updateAttendanceError)
+        throw updateAttendanceError
+      }
+
+      // 이제 근무표 삭제
       const { error: deleteError } = await supabase
         .from("work_schedule_entries")
         .delete()
@@ -470,6 +522,19 @@ export const supabaseWorkScheduleStorage = {
         throw deleteError
       }
 
+      // 삭제된 근무표의 날짜들에 대해 마일리지 동기화
+      const deletedDates = [...new Set(regularEntries.map(entry => entry.date))]
+      console.log(`Syncing mileage for ${deletedDates.length} dates after deletion`)
+      
+      for (const date of deletedDates) {
+        try {
+          const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+          await supabaseAttendanceStorage.refreshAttendanceForDate(date)
+        } catch (error) {
+          console.error(`Failed to refresh attendance for date ${date}:`, error)
+        }
+      }
+      
       console.log(`Successfully deleted ${regularEntries.length} schedule entries`)
       console.log(`Protected ${leaveEntries.length} leave entries from deletion`)
       return {deleted: regularEntries.length, protectedLeave: leaveEntries.length}
@@ -533,6 +598,10 @@ export const supabaseWorkScheduleStorage = {
       }
 
       console.log(`Successfully updated work schedule for ${date}`)
+      
+      // 근태 기록 업데이트
+      const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+      await supabaseAttendanceStorage.updateAttendanceFromSchedule(memberId, date)
     } catch (error) {
       console.error("Error in upsertWorkSchedule:", error)
       throw error
@@ -555,6 +624,10 @@ export const supabaseWorkScheduleStorage = {
       }
 
       console.log(`Successfully deleted work schedule for ${date}`)
+      
+      // 근태 기록 업데이트 (근무표가 삭제되었으므로 근무 정보 제거)
+      const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+      await supabaseAttendanceStorage.updateAttendanceFromSchedule(memberId, date)
     } catch (error) {
       console.error("Error in deleteWorkSchedule:", error)
       throw error

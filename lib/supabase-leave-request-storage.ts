@@ -648,6 +648,11 @@ export class SupabaseLeaveRequestStorage {
               })
               .eq("id", existingSchedule.id)
             console.log(`${dateStr} 근무표를 연차로 업데이트`)
+            
+            // 근태 기록도 업데이트
+            const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+            await supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, dateStr)
+            console.log(`${dateStr} 근태 기록 업데이트`)
           } catch (error) {
             console.error(`근무표 업데이트 오류 (${dateStr}):`, error)
           }
@@ -664,6 +669,11 @@ export class SupabaseLeaveRequestStorage {
               replaced_by_leave_id: request.id
             })
           console.log(`${dateStr} 근무표 새로 생성`)
+          
+          // 근태 기록도 업데이트
+          const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+          await supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, dateStr)
+          console.log(`${dateStr} 근태 기록 업데이트`)
         } catch (error) {
           console.error(`근무표 생성 오류 (${dateStr}):`, error)
         }
@@ -730,6 +740,11 @@ export class SupabaseLeaveRequestStorage {
               replaced_by_leave_id: null
             })
             .eq("id", schedule.id)
+          
+          // 근태 기록도 업데이트
+          const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+          await supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, schedule.date)
+          console.log(`${schedule.date} 근태 기록 업데이트`)
         } else {
           // 원래 근무가 없었으면 삭제하고 날짜 기록
           console.log(`${schedule.date}: 삭제 (원래 없었음)`)
@@ -738,6 +753,11 @@ export class SupabaseLeaveRequestStorage {
             .from("work_schedule_entries")
             .delete()
             .eq("id", schedule.id)
+          
+          // 근태 기록도 업데이트 (근무표 삭제 반영)
+          const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+          await supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, schedule.date)
+          console.log(`${schedule.date} 근태 기록 업데이트`)
         }
       } catch (error) {
         console.error(`근무표 복구 오류 (${schedule.date}):`, error)

@@ -17,6 +17,8 @@ import {
   Calendar,
   FileText,
   CheckCircle,
+  ClipboardList,
+  Coins,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -76,6 +78,24 @@ const menuItems = [
     title: "연차 승인",
     href: "/leave-approval",
     icon: CheckCircle,
+    roles: ["관리자"], // 관리자만 접근 가능
+  },
+  {
+    title: "나의 근태 관리",
+    href: "/attendance/my",
+    icon: ClipboardList,
+    roles: ["관리자", "일반직원"], // 모든 사용자 접근 가능
+  },
+  {
+    title: "구성원 근태 관리",
+    href: "/attendance/all",
+    icon: ClipboardList,
+    roles: ["관리자"], // 관리자만 접근 가능
+  },
+  {
+    title: "근무 마일리지",
+    href: "/mileage/manage",
+    icon: Coins,
     roles: ["관리자"], // 관리자만 접근 가능
   },
   {

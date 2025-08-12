@@ -242,5 +242,52 @@ export interface Database {
         }
       }
     }
+    work_mileage_transactions: {
+      Row: {
+        id: string
+        member_id: string
+        transaction_date: string
+        transaction_type: 'overtime' | 'late' | 'early_leave' | 'admin_adjust' | 'initial_balance'
+        minutes: number
+        reason: string | null
+        created_by: string | null
+        created_at: string
+        reference_id: string | null
+        work_date: string | null
+        event_source: 'attendance' | 'leave' | 'schedule' | 'manual' | 'legacy' | null
+        source_id: string | null
+        is_active: boolean
+      }
+      Insert: {
+        id?: string
+        member_id: string
+        transaction_date: string
+        transaction_type: 'overtime' | 'late' | 'early_leave' | 'admin_adjust' | 'initial_balance'
+        minutes: number
+        reason?: string | null
+        created_by?: string | null
+        created_at?: string
+        reference_id?: string | null
+        work_date?: string | null
+        event_source?: 'attendance' | 'leave' | 'schedule' | 'manual' | 'legacy' | null
+        source_id?: string | null
+        is_active?: boolean
+      }
+      Update: {
+        id?: string
+        member_id?: string
+        transaction_date?: string
+        transaction_type?: 'overtime' | 'late' | 'early_leave' | 'admin_adjust' | 'initial_balance'
+        minutes?: number
+        reason?: string | null
+        created_by?: string | null
+        created_at?: string
+        reference_id?: string | null
+        work_date?: string | null
+        event_source?: 'attendance' | 'leave' | 'schedule' | 'manual' | 'legacy' | null
+        source_id?: string | null
+        is_active?: boolean
+      }
+    }
   }
 }
