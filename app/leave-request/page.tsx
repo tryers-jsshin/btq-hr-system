@@ -215,24 +215,24 @@ export default function LeaveRequestPage() {
 
             {/* Balance Card - Responsive */}
             {balance && (
-              <Card className="bg-gradient-to-br from-[#5e6ad2] to-[#8b7cf6] text-white border-0">
+              <Card className="bg-white border border-[#5e6ad2] shadow-sm">
                 <CardContent className="p-4 md:p-6 text-center">
-                  <div className="text-3xl md:text-4xl font-bold mb-2">{balance.current_balance}일</div>
-                  <div className="text-sm md:text-base opacity-90 mb-4 md:mb-6">사용 가능한 연차</div>
+                  <div className="text-3xl md:text-4xl font-bold mb-2 text-[#5e6ad2]">{balance.current_balance}일</div>
+                  <div className="text-sm md:text-base text-[#4a5568] mb-4 md:mb-6">사용 가능한 연차</div>
                   
                   {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-3 md:gap-4 pt-3 md:pt-4 border-t border-white/20">
+                  <div className="grid grid-cols-3 gap-3 md:gap-4 pt-3 md:pt-4 border-t border-[#f3f4f6]">
                     <div className="text-center">
-                      <div className="text-lg md:text-xl font-semibold">{balance.total_granted}</div>
-                      <div className="text-xs md:text-sm opacity-80">부여</div>
+                      <div className="text-lg md:text-xl font-semibold text-[#0a0b0c]">{balance.total_granted}</div>
+                      <div className="text-xs md:text-sm text-[#718096]">부여</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg md:text-xl font-semibold">{balance.total_used}</div>
-                      <div className="text-xs md:text-sm opacity-80">사용</div>
+                      <div className="text-lg md:text-xl font-semibold text-[#0a0b0c]">{balance.total_used}</div>
+                      <div className="text-xs md:text-sm text-[#718096]">사용</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg md:text-xl font-semibold">{balance.total_expired}</div>
-                      <div className="text-xs md:text-sm opacity-80">소멸</div>
+                      <div className="text-lg md:text-xl font-semibold text-[#0a0b0c]">{balance.total_expired}</div>
+                      <div className="text-xs md:text-sm text-[#718096]">소멸</div>
                     </div>
                   </div>
                 </CardContent>
