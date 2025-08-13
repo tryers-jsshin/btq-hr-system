@@ -48,7 +48,7 @@ const getLeaveTypeColor = (leaveType: string) => {
   return leaveTypeColors[leaveType as keyof typeof leaveTypeColors] || "bg-[#fef3c7] text-[#d97706] border-[#fde68a]"
 }
 
-export default function LeaveApprovalPage() {
+export default function LeaveApprovalDemo3() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [filteredRequests, setFilteredRequests] = useState<LeaveRequest[]>([])
   const [stats, setStats] = useState<LeaveRequestStats | null>(null)
@@ -166,18 +166,16 @@ export default function LeaveApprovalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-48 mb-2"></div>
-            <div className="h-4 bg-gray-100 rounded w-64 mb-8"></div>
-            <div className="h-10 bg-gray-100 rounded mb-6"></div>
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-16 bg-gray-50 rounded"></div>
-              ))}
-            </div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-[#0a0b0c]">연차 승인 관리</h1>
+            <p className="text-[#4a5568] mt-1">시안 3: Mobile-First Optimized</p>
           </div>
+        </div>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#5e6ad2] border-t-transparent mx-auto"></div>
+          <p className="mt-4 text-[#4a5568]">데이터를 불러오는 중...</p>
         </div>
       </div>
     )
@@ -186,31 +184,26 @@ export default function LeaveApprovalPage() {
   const pendingRequests = leaveRequests.filter(r => r.status === "대기중")
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-        {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">연차 승인 관리</h1>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-6 pb-20 md:pb-6">
+      {/* 헤더 - 모바일 최적화 */}
+      <div>
+        <h1 className="text-xl md:text-2xl font-bold text-[#0a0b0c]">연차 승인</h1>
+        <p className="text-[#718096] text-sm md:text-base mt-1">Mobile-First Optimized</p>
+      </div>
 
-        {/* Search Bar */}
-        <div className="mb-6">
-          <div className="relative">
-            <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#718096] h-4 w-4" />
-            <Input
-              placeholder="이름, 팀명으로 검색..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 h-10 bg-[#fafbfb] border-[#f3f4f6] rounded-md text-sm placeholder:text-[#718096] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2] transition-all duration-100"
-            />
-          </div>
-        </div>
 
-        {/* Tabs and Content */}
+      {/* 검색바 */}
+      <div className="px-1">
+        <Input
+          placeholder="이름 또는 팀명으로 검색..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border-[#f3f4f6] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2]"
+        />
+      </div>
+
+      {/* 탭 네비게이션 - 모바일 스크롤 */}
+      <div className="px-1">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="overflow-x-auto">
             <TabsList className="grid w-max grid-cols-5 bg-[#fafbfb] min-w-full">
@@ -232,98 +225,100 @@ export default function LeaveApprovalPage() {
             </TabsList>
           </div>
 
-          {/* Desktop Table View */}
-          <div className="hidden md:block bg-white rounded-lg border border-[#f3f4f6] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-[#fafbfb] border-b border-[#f3f4f6]">
-                    <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">신청자</th>
-                    <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">유형</th>
-                    <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">상태</th>
-                    <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">기간</th>
-                    <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">일수</th>
-                    <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">사유</th>
-                    <th className="relative px-6 py-3">
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-[#f3f4f6]">
-                  {filteredRequests.map((request) => (
-                    <tr key={request.id} className="hover:bg-[#f7f8f9] transition-colors duration-100">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-[#0a0b0c]">{request.member_name}</div>
-                          {request.team_name && (
-                            <div className="text-xs text-[#718096]">{request.team_name}</div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-[#4a5568]">
-                          {request.leave_type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`text-sm font-medium ${statusColors[request.status]}`}>
-                          {request.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4a5568]">
-                        {request.start_date === request.end_date
-                          ? formatDate(request.start_date)
-                          : `${formatDate(request.start_date)} ~ ${formatDate(request.end_date)}`
-                        }
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-semibold text-[#0a0b0c]">{request.total_days}일</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#718096]">
-                        <span className="block truncate max-w-xs">
-                          {request.reason || '-'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        {canTakeAction(request) ? (
-                          <div className="flex gap-1 justify-end">
-                            <Button
-                              size="sm"
-                              onClick={() => handleApprovalAction(request, "approve")}
-                              className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white h-8 px-3 text-xs font-medium rounded-md transition-colors duration-100"
-                            >
-                              승인
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleApprovalAction(request, "reject")}
-                              className="bg-white text-[#dc2626] border-[#f3f4f6] hover:bg-[#fef2f2] hover:border-[#fecaca] h-8 px-3 text-xs font-medium rounded-md transition-colors duration-100"
-                            >
-                              반려
-                            </Button>
-                          </div>
-                        ) : canCancelRequest(request) ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleCancelRequest(request.id, request.member_name)}
-                            className="bg-white text-[#718096] border-[#f3f4f6] hover:bg-[#fef2f2] hover:text-[#dc2626] hover:border-[#fecaca] h-8 px-3 text-xs font-medium rounded-md transition-colors duration-100"
-                          >
-                            취소
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-[#718096]">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* 데스크톱 테이블 뷰 */}
+          <div className="hidden md:block">
+            <Card className="bg-white border-[#f3f4f6]">
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-[#fafbfb] border-b border-[#f3f4f6]">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-[#4a5568] uppercase">신청자</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-[#4a5568] uppercase">유형</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-[#4a5568] uppercase">상태</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-[#4a5568] uppercase">기간</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-[#4a5568] uppercase">일수</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-[#4a5568] uppercase">사유</th>
+                        <th className="text-center px-4 py-3 text-xs font-semibold text-[#4a5568] uppercase">액션</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f3f4f6]">
+                      {filteredRequests.map((request) => (
+                        <tr key={request.id} className="hover:bg-[#f7f8f9] transition-colors">
+                          <td className="px-4 py-3">
+                            <div>
+                              <div className="font-semibold text-[#0a0b0c] text-sm">{request.member_name}</div>
+                              {request.team_name && (
+                                <div className="text-xs text-[#718096]">{request.team_name}</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-sm text-[#0a0b0c] font-medium">
+                              {request.leave_type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`text-sm font-medium ${statusColors[request.status]}`}>
+                              {request.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-[#4a5568]">
+                            {request.start_date === request.end_date
+                              ? formatDate(request.start_date)
+                              : `${formatDate(request.start_date)} ~ ${formatDate(request.end_date)}`
+                            }
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="font-semibold text-[#0a0b0c]">{request.total_days}일</span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-[#718096]">
+                            {request.reason || '-'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-center">
+                              {canTakeAction(request) ? (
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleApprovalAction(request, "approve")}
+                                    className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white h-7 px-2 text-xs font-medium"
+                                  >
+                                    승인
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleApprovalAction(request, "reject")}
+                                    className="bg-white text-[#dc2626] border-[#f3f4f6] hover:bg-[#fef2f2] hover:border-[#fecaca] h-7 px-2 text-xs font-medium"
+                                  >
+                                    반려
+                                  </Button>
+                                </div>
+                              ) : canCancelRequest(request) ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleCancelRequest(request.id, request.member_name)}
+                                  className="bg-white text-[#718096] border-[#f3f4f6] hover:bg-[#fef2f2] hover:text-[#dc2626] hover:border-[#fecaca] h-7 px-2 text-xs font-medium"
+                                >
+                                  취소
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-[#718096]">-</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Mobile Card View */}
+          {/* 모바일 카드 뷰 - Version 6 스타일 적용 */}
           <div className="md:hidden space-y-3">
             {filteredRequests.map((request) => (
               <Card key={request.id} className={`
@@ -438,19 +433,35 @@ export default function LeaveApprovalPage() {
             )}
           </div>
         </Tabs>
-
-        {/* 승인/반려 다이얼로그 */}
-        {selectedRequest && (
-          <LeaveApprovalDialog
-            open={showApprovalDialog}
-            onOpenChange={setShowApprovalDialog}
-            request={selectedRequest}
-            action={approvalAction}
-            approverId={currentUser?.id || ""}
-            onSubmit={handleApprovalSubmit}
-          />
-        )}
       </div>
+
+      {/* 모바일 FAB - 대기중 신청이 있을 때만 표시 */}
+      {pendingRequests.length > 0 && (
+        <div className="md:hidden fixed bottom-6 right-6 z-50">
+          <Button 
+            onClick={() => {
+              if (pendingRequests[0]) {
+                handleApprovalAction(pendingRequests[0], "approve")
+              }
+            }}
+            className="h-14 w-14 rounded-full bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white shadow-lg"
+          >
+            <CheckCircle className="h-6 w-6" />
+          </Button>
+        </div>
+      )}
+
+      {/* 승인/반려 다이얼로그 */}
+      {selectedRequest && (
+        <LeaveApprovalDialog
+          open={showApprovalDialog}
+          onOpenChange={setShowApprovalDialog}
+          request={selectedRequest}
+          action={approvalAction}
+          approverId={currentUser?.id || ""}
+          onSubmit={handleApprovalSubmit}
+        />
+      )}
     </div>
   )
 }

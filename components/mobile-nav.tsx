@@ -186,9 +186,9 @@ export function MobileNav() {
 
   if (isLoading) {
     return (
-      <div className="flex h-16 items-center justify-between px-4 border-b border-gray-200 bg-white">
-        <h1 className="text-lg font-bold text-gray-900">HR 시스템</h1>
-        <div className="text-gray-500">로딩 중...</div>
+      <div className="flex h-16 items-center justify-between px-4 border-b border-[#f3f4f6] bg-white">
+        <h1 className="text-lg font-bold text-[#0a0b0c]">HR 시스템</h1>
+        <div className="text-[#718096]">로딩 중...</div>
       </div>
     )
   }
@@ -198,12 +198,12 @@ export function MobileNav() {
   }
 
   return (
-    <div className="flex h-16 items-center justify-between px-4 border-b border-gray-200 bg-white">
-      <h1 className="text-lg font-bold text-gray-900">HR 시스템</h1>
+    <div className="flex h-16 items-center justify-between px-4 border-b border-[#f3f4f6] bg-white shadow-sm">
+      <h1 className="text-lg font-bold text-[#0a0b0c]">HR 시스템</h1>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" className="text-[#4a5568] hover:bg-[#fafbfb] hover:text-[#0a0b0c] rounded-lg">
             <Menu className="h-6 w-6" />
             <span className="sr-only">메뉴 열기</span>
           </Button>
@@ -214,8 +214,8 @@ export function MobileNav() {
           </DialogHeader>
           <div className="flex h-full flex-col">
             {/* Header */}
-            <div className="flex h-16 items-center px-6 border-b border-gray-200">
-              <h1 className="text-xl font-bold text-gray-900">HR 시스템</h1>
+            <div className="flex h-16 items-center px-6 border-b border-[#f3f4f6] bg-white">
+              <h1 className="text-xl font-bold text-[#0a0b0c]">HR 시스템</h1>
             </div>
 
             {/* Navigation */}
@@ -245,8 +245,8 @@ export function MobileNav() {
                         <Button
                           variant="ghost"
                           className={cn(
-                            "w-full justify-between px-3 py-2 text-left font-normal",
-                            false ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                            "w-full justify-between px-3 py-2 text-left font-normal rounded-lg transition-colors duration-100",
+                            false ? "bg-[#f3f4f6] text-[#0a0b0c]" : "text-[#4a5568] hover:bg-[#fafbfb] hover:text-[#0a0b0c]",
                           )}
                         >
                           <div className="flex items-center">
@@ -262,10 +262,10 @@ export function MobileNav() {
                             <Button
                               variant="ghost"
                               className={cn(
-                                "w-full justify-start px-3 py-2 text-left font-normal",
+                                "w-full justify-start px-3 py-2 text-left font-normal rounded-lg transition-colors duration-100",
                                 pathname === child.href
-                                  ? "bg-gray-100 text-gray-900"
-                                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                                  ? "bg-[#5e6ad2]/10 text-[#5e6ad2] font-medium"
+                                  : "text-[#4a5568] hover:bg-[#fafbfb] hover:text-[#0a0b0c]",
                               )}
                             >
                               <child.icon className="mr-3 h-4 w-4" />
@@ -283,11 +283,11 @@ export function MobileNav() {
                     <Button
                       variant="ghost"
                       className={cn(
-                        "w-full justify-start px-3 py-2 text-left font-normal",
+                        "w-full justify-start px-3 py-2 text-left font-normal rounded-lg transition-colors duration-100",
                         pathname === item.href ||
                           (item.href === "/work-schedule" && pathname.startsWith("/work-schedule"))
-                          ? "bg-gray-100 text-gray-900"
-                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                          ? "bg-[#5e6ad2]/10 text-[#5e6ad2] font-medium"
+                          : "text-[#4a5568] hover:bg-[#fafbfb] hover:text-[#0a0b0c]",
                       )}
                     >
                       <item.icon className="mr-3 h-5 w-5" />
@@ -299,25 +299,31 @@ export function MobileNav() {
             </nav>
 
             {/* User Info & Logout */}
-            <div className="border-t border-gray-200 p-3">
-              <div className="flex items-center space-x-3 mb-3">
-                <div className="flex items-center justify-center w-8 h-8 bg-blue-600 rounded-full">
-                  <User className="h-4 w-4 text-white" />
-                </div>
+            <div className="border-t border-[#f3f4f6] p-4">
+              <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{currentUser.name}</p>
-                  <p className="text-xs text-gray-500 truncate">{currentUser.team_name}</p>
-                  <p className="text-xs text-blue-600 truncate">{currentUser.role}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-[#0a0b0c]">{currentUser.name}</p>
+                    {currentUser.role === '관리자' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#5e6ad2]/10 text-[#5e6ad2]">
+                        관리자
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-[#718096] mt-0.5">
+                    {currentUser.team_name || '팀 미지정'}
+                  </p>
                 </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-[#718096] hover:text-[#dc2626] hover:bg-[#fef2f2] rounded-lg transition-all duration-100"
+                  onClick={handleLogout}
+                  title="로그아웃"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                className="w-full justify-start px-3 py-2 text-left font-normal text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                onClick={handleLogout}
-              >
-                <LogOut className="mr-3 h-4 w-4" />
-                로그아웃
-              </Button>
             </div>
           </div>
         </SheetContent>

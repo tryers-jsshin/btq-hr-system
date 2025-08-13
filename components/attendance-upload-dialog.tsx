@@ -101,9 +101,11 @@ export function AttendanceUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="!w-[calc(100%-2rem)] sm:!w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white border-[#f3f4f6]">
         <DialogHeader>
-          <DialogTitle>출퇴근 CSV 업로드</DialogTitle>
+          <DialogTitle className="text-left text-[#0a0b0c]">
+            출퇴근 CSV 업로드
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -188,15 +190,15 @@ export function AttendanceUploadDialog({
 
           {/* 업로드 결과 */}
           {result && (
-            <Alert className={result.errors.length > 0 ? "border-orange-200" : "border-green-200"}>
+            <Alert className={result.errors.length > 0 ? "bg-[#fff7ed] border-[#fed7aa]" : "bg-[#f0fdf4] border-[#bbf7d0]"}>
               {result.errors.length > 0 ? (
-                <AlertCircle className="h-4 w-4 text-orange-600" />
+                <AlertCircle className="h-4 w-4 text-[#ea580c]" />
               ) : (
-                <CheckCircle className="h-4 w-4 text-green-600" />
+                <CheckCircle className="h-4 w-4 text-[#16a34a]" />
               )}
-              <AlertDescription>
+              <AlertDescription className="text-[#4a5568]">
                 <div className="space-y-2">
-                  <p className="font-medium">업로드 완료</p>
+                  <p className="font-medium text-[#0a0b0c]">업로드 완료</p>
                   <div className="text-sm space-y-1">
                     <p>• 전체 행: {result.total_rows}개</p>
                     <p>• 처리됨: {result.processed_rows}개</p>
@@ -207,10 +209,10 @@ export function AttendanceUploadDialog({
                   
                   {result.errors.length > 0 && (
                     <div className="mt-2">
-                      <p className="font-medium text-orange-600">오류 목록:</p>
+                      <p className="font-medium text-[#ea580c]">오류 목록:</p>
                       <div className="max-h-32 overflow-y-auto text-sm">
                         {result.errors.map((err, idx) => (
-                          <p key={idx} className="text-red-600">
+                          <p key={idx} className="text-[#dc2626]">
                             • {err.row}행: {err.error}
                           </p>
                         ))}

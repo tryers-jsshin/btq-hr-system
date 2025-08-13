@@ -98,46 +98,68 @@ export default function Teams() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">팀 관리</h1>
+      <div className="min-h-screen bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-48 mb-2"></div>
+            <div className="h-4 bg-gray-100 rounded w-64 mb-8"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-32 bg-gray-50 rounded-lg"></div>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center justify-center h-64">
-          <p className="text-gray-500">로딩 중...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">팀 관리</h1>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">팀 관리</h1>
+            </div>
+            <Button 
+              onClick={handleAddTeam}
+              className="hidden md:flex bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white rounded-md h-9 sm:h-10 px-3 sm:px-4 text-sm font-medium transition-colors duration-100"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              팀 추가
+            </Button>
+          </div>
         </div>
-        <Button onClick={handleAddTeam}>
-          <Plus className="h-4 w-4 mr-2" />팀 추가
+
+        {/* Team Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {teams.map((team) => (
+            <TeamCard key={team.id} team={team} onEdit={handleEditTeam} onDelete={handleDeleteTeam} />
+          ))}
+        </div>
+
+        {/* Empty State */}
+        {teams.length === 0 && (
+          <div className="text-center py-12">
+            <Plus className="h-12 w-12 text-[#718096] mx-auto mb-4" />
+            <p className="text-[#4a5568]">등록된 팀이 없습니다</p>
+          </div>
+        )}
+
+        <TeamFormDialog open={dialogOpen} onOpenChange={setDialogOpen} team={editingTeam} onSave={handleSaveTeam} />
+      </div>
+
+      {/* Mobile FAB */}
+      <div className="md:hidden fixed bottom-6 right-6 z-50">
+        <Button
+          onClick={handleAddTeam}
+          className="h-14 w-14 rounded-full bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white shadow-lg"
+        >
+          <Plus className="h-6 w-6" />
         </Button>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {teams.map((team) => (
-          <TeamCard key={team.id} team={team} onEdit={handleEditTeam} onDelete={handleDeleteTeam} />
-        ))}
-      </div>
-
-      {teams.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">등록된 팀이 없습니다.</p>
-          <Button onClick={handleAddTeam}>
-            <Plus className="h-4 w-4 mr-2" />첫 번째 팀 추가하기
-          </Button>
-        </div>
-      )}
-
-      <TeamFormDialog open={dialogOpen} onOpenChange={setDialogOpen} team={editingTeam} onSave={handleSaveTeam} />
     </div>
   )
 }

@@ -3,14 +3,30 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, UserX, RotateCcw, Calendar, FileText } from "lucide-react"
+import { 
+  Plus, 
+  Search, 
+  UserX, 
+  RotateCcw, 
+  Calendar, 
+  FileText, 
+  MoreVertical,
+  Eye
+} from "lucide-react"
 import { TerminationFormDialog } from "@/components/termination-form-dialog"
+import { TerminationCancelDialog } from "@/components/termination-cancel-dialog"
+import { TerminatedMemberDetailDialog } from "@/components/terminated-member-detail-dialog"
 import { supabaseTerminationStorage } from "@/lib/supabase-termination-storage"
 import { supabaseAuthStorage } from "@/lib/supabase-auth-storage"
 import type { Database } from "@/types/database"
 import { useToast } from "@/hooks/use-toast"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 type Member = Database["public"]["Tables"]["members"]["Row"]
 
@@ -19,6 +35,9 @@ export default function TerminatedMembers() {
   const [filteredMembers, setFilteredMembers] = useState<Member[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [formDialogOpen, setFormDialogOpen] = useState(false)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null)
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
@@ -35,7 +54,7 @@ export default function TerminatedMembers() {
         (member) =>
           member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           member.team_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          member.employee_number.toLowerCase().includes(searchTerm.toLowerCase()),
+          member.employee_number?.toLowerCase().includes(searchTerm.toLowerCase()),
       )
       setFilteredMembers(filtered)
     }
@@ -45,7 +64,13 @@ export default function TerminatedMembers() {
     try {
       setLoading(true)
       const data = await supabaseTerminationStorage.getTerminatedMembers()
-      setTerminatedMembers(data)
+      // 퇴사일 기준 최신순 정렬
+      const sortedData = data.sort((a, b) => {
+        if (!a.termination_date) return 1
+        if (!b.termination_date) return -1
+        return new Date(b.termination_date).getTime() - new Date(a.termination_date).getTime()
+      })
+      setTerminatedMembers(sortedData)
     } catch (error) {
       console.error("퇴사자 목록 로드 실패:", error)
       toast({
@@ -86,7 +111,7 @@ export default function TerminatedMembers() {
       )
 
       toast({
-        title: "퇴사자 등록 완료",
+        title: "퇴사 처리 완료",
         description: "퇴사 처리가 성공적으로 완료되었습니다.",
       })
 
@@ -95,15 +120,19 @@ export default function TerminatedMembers() {
       console.error("퇴사 등록 실패:", error)
       toast({
         title: "오류",
-        description: "퇴사 등록에 실패했습니다.",
+        description: "퇴사 처리에 실패했습니다.",
         variant: "destructive",
       })
     }
   }
 
-  const handleCancelTermination = async (member: Member) => {
-    const cancellationReason = prompt("퇴사 취소 사유를 입력해주세요:")
-    if (!cancellationReason) return
+  const handleCancelTermination = (member: Member) => {
+    setSelectedMember(member)
+    setCancelDialogOpen(true)
+  }
+
+  const handleConfirmCancelTermination = async (reason: string) => {
+    if (!selectedMember) return
 
     try {
       const currentUser = await supabaseAuthStorage.getCurrentUser()
@@ -116,14 +145,16 @@ export default function TerminatedMembers() {
         return
       }
 
-      await supabaseTerminationStorage.cancelTermination(member.id, cancellationReason, currentUser.name)
+      await supabaseTerminationStorage.cancelTermination(selectedMember.id, reason, currentUser.name)
 
       toast({
         title: "퇴사 취소 완료",
-        description: `${member.name} 구성원의 퇴사가 취소되었습니다.`,
+        description: `${selectedMember.name} 구성원의 퇴사가 취소되었습니다.`,
       })
 
       await loadTerminatedMembers()
+      setCancelDialogOpen(false)
+      setSelectedMember(null)
     } catch (error) {
       console.error("퇴사 취소 실패:", error)
       toast({
@@ -134,117 +165,234 @@ export default function TerminatedMembers() {
     }
   }
 
+  const handleViewDetail = (member: Member) => {
+    setSelectedMember(member)
+    setDetailDialogOpen(true)
+  }
+
+
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">퇴사자 관리</h1>
-            <p className="text-gray-600">퇴사한 구성원들을 관리합니다</p>
+      <div className="min-h-screen bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-48 mb-2"></div>
+            <div className="h-4 bg-gray-100 rounded w-64 mb-8"></div>
+            <div className="h-10 bg-gray-100 rounded mb-6"></div>
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-16 bg-gray-50 rounded"></div>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center justify-center h-64">
-          <p className="text-gray-500">로딩 중...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-            <UserX className="h-6 w-6 mr-2 text-red-600" />
-            퇴사자 관리
-          </h1>
-          <p className="text-gray-600">퇴사한 구성원들을 관리합니다</p>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">퇴사자 관리</h1>
+            </div>
+            <Button
+              onClick={handleAddTermination}
+              className="hidden md:flex bg-red-600 hover:bg-red-700 text-white rounded-md h-9 sm:h-10 px-3 sm:px-4 text-sm font-medium transition-colors duration-100"
+            >
+              <UserX className="h-4 w-4 mr-2" />
+              퇴사 처리
+            </Button>
+          </div>
         </div>
-        <Button onClick={handleAddTermination}>
-          <Plus className="h-4 w-4 mr-2" />
-          퇴사자 등록
-        </Button>
-      </div>
 
-      {/* 검색 */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-        <Input
-          placeholder="이름, 팀, 사원번호로 검색..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
+        {/* Search Bar */}
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#718096] h-4 w-4" />
+            <Input
+              placeholder="이름, 사번, 팀으로 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 h-10 bg-[#fafbfb] border-[#f3f4f6] rounded-md text-sm placeholder:text-[#718096] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2] transition-all duration-100"
+            />
+          </div>
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block bg-white rounded-lg border border-[#f3f4f6] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-[#fafbfb] border-b border-[#f3f4f6]">
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">
+                    이름
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">
+                    사번
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">
+                    팀
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider">
+                    퇴사일
+                  </th>
+                  <th className="relative px-6 py-3">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-[#f3f4f6]">
+                {filteredMembers.map((member) => (
+                  <tr 
+                    key={member.id} 
+                    className="hover:bg-[#f7f8f9] transition-colors duration-100"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-[#0a0b0c]">{member.name}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-[#4a5568]">{member.employee_number || '-'}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-[#4a5568]">{member.team_name || '-'}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-[#4a5568]">
+                        {member.termination_date 
+                          ? new Date(member.termination_date).toLocaleDateString("ko-KR")
+                          : '-'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            className="h-8 w-8 p-0 hover:bg-[#f3f4f6]"
+                          >
+                            <MoreVertical className="h-4 w-4 text-[#718096]" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => handleViewDetail(member)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            상세보기
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleCancelTermination(member)}>
+                            <RotateCcw className="h-4 w-4 mr-2" />
+                            퇴사 취소
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Mobile List View - Option 9 Design */}
+        <div className="md:hidden space-y-2">
+          {filteredMembers.map((member) => (
+            <div
+              key={member.id}
+              className="bg-white rounded-lg border border-[#f3f4f6] px-3 py-2.5 flex items-center"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-[#0a0b0c] truncate">{member.name}</h3>
+                  {member.termination_date && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                      {new Date(member.termination_date).toLocaleDateString("ko-KR")}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-[#718096] truncate">
+                  {member.team_name || '소속 없음'}
+                </p>
+              </div>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-[#f3f4f6] rounded-lg"
+                  >
+                    <MoreVertical className="h-4 w-4 text-[#9ca3af]" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-32">
+                  <DropdownMenuItem 
+                    onClick={() => handleViewDetail(member)} 
+                    className="py-2 px-3"
+                  >
+                    <span className="text-sm">상세보기</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => handleCancelTermination(member)} 
+                    className="py-2 px-3"
+                  >
+                    <span className="text-sm">퇴사 취소</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))}
+        </div>
+
+        {/* Empty States */}
+        {!loading && filteredMembers.length === 0 && searchTerm === "" && (
+          <div className="text-center py-12">
+            <UserX className="h-12 w-12 text-[#718096] mx-auto mb-4" />
+            <p className="text-[#4a5568]">퇴사한 구성원이 없습니다</p>
+          </div>
+        )}
+
+        {!loading && filteredMembers.length === 0 && searchTerm !== "" && (
+          <div className="text-center py-12">
+            <Search className="h-12 w-12 text-[#718096] mx-auto mb-4" />
+            <p className="text-[#4a5568]">검색 결과가 없습니다</p>
+            <p className="text-sm text-[#718096] mt-2">다른 검색어를 시도해보세요</p>
+          </div>
+        )}
+
+        {/* Modals */}
+        <TerminationFormDialog 
+          open={formDialogOpen} 
+          onOpenChange={setFormDialogOpen} 
+          onSave={handleSaveTermination} 
+        />
+        
+        <TerminationCancelDialog
+          open={cancelDialogOpen}
+          onOpenChange={setCancelDialogOpen}
+          member={selectedMember}
+          onConfirm={handleConfirmCancelTermination}
+        />
+        
+        <TerminatedMemberDetailDialog
+          open={detailDialogOpen}
+          onOpenChange={setDetailDialogOpen}
+          member={selectedMember}
         />
       </div>
 
-      {/* 퇴사자 목록 */}
-      <div className="grid grid-cols-1 gap-4">
-        {filteredMembers.map((member) => (
-          <Card key={member.id} className="hover:shadow-md transition-shadow">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center">
-                  {member.name}
-                  <Badge variant="secondary" className="ml-2">
-                    {member.team_name}
-                  </Badge>
-                  <Badge variant="destructive" className="ml-2">
-                    퇴사
-                  </Badge>
-                </CardTitle>
-                <div className="flex items-center space-x-2">
-                  <Button variant="ghost" size="sm" onClick={() => handleCancelTermination(member)} title="퇴사 취소">
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="flex items-center text-gray-600">
-                  <span className="font-medium">사원번호:</span>
-                  <span className="ml-2 font-mono">{member.employee_number}</span>
-                </div>
-                <div className="flex items-center text-gray-600">
-                  <Calendar className="h-4 w-4 mr-1" />
-                  <span className="font-medium">퇴사일:</span>
-                  <span className="ml-2">
-                    {member.termination_date ? new Date(member.termination_date).toLocaleDateString("ko-KR") : "-"}
-                  </span>
-                </div>
-              </div>
-              {member.termination_reason && (
-                <div className="flex items-start text-sm text-gray-600">
-                  <FileText className="h-4 w-4 mr-1 mt-0.5 flex-shrink-0" />
-                  <span className="font-medium">퇴사 사유:</span>
-                  <span className="ml-2 break-words">{member.termination_reason}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+      {/* Mobile FAB */}
+      <div className="md:hidden fixed bottom-6 right-6 z-50">
+        <Button
+          onClick={handleAddTermination}
+          className="h-14 w-14 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg"
+        >
+          <UserX className="h-6 w-6" />
+        </Button>
       </div>
-
-      {/* 퇴사자가 없을 때 */}
-      {!loading && filteredMembers.length === 0 && searchTerm === "" && (
-        <div className="text-center py-12">
-          <UserX className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500 mb-4">등록된 퇴사자가 없습니다.</p>
-          <Button onClick={handleAddTermination}>
-            <Plus className="h-4 w-4 mr-2" />첫 번째 퇴사자 등록하기
-          </Button>
-        </div>
-      )}
-
-      {/* 검색 결과가 없을 때 */}
-      {!loading && filteredMembers.length === 0 && searchTerm !== "" && (
-        <div className="text-center py-12">
-          <p className="text-gray-500">검색 결과가 없습니다.</p>
-        </div>
-      )}
-
-      {/* 퇴사자 등록 다이얼로그 */}
-      <TerminationFormDialog open={formDialogOpen} onOpenChange={setFormDialogOpen} onSave={handleSaveTermination} />
     </div>
   )
 }

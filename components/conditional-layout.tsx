@@ -18,7 +18,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   if (isLoginPage) {
     // 로그인 페이지는 전체 화면 사용
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-[#fafbfb]">
         <RouteGuard>{children}</RouteGuard>
       </div>
     )
@@ -27,21 +27,21 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   // 일반 페이지는 사이드바 레이아웃 사용
   return (
     <RouteGuard>
-      <div className="flex h-screen bg-gray-50">
+      <div className="flex h-screen bg-white">
         {/* Desktop Sidebar */}
         <div className="hidden lg:flex lg:w-64 lg:flex-col">
           <Sidebar />
         </div>
 
         {/* Main Content */}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden bg-white">
           {/* Mobile Navigation */}
           <div className="lg:hidden">
             <MobileNav />
           </div>
 
           {/* Page Content */}
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+          <main className="flex-1 overflow-y-auto p-4 lg:p-6 bg-white">{children}</main>
         </div>
       </div>
     </RouteGuard>

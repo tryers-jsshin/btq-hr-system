@@ -17,26 +17,17 @@ import { AnnualLeavePolicyViewDialog } from "@/components/annual-leave-policy-vi
 import type { LeaveRequest } from "@/types/leave-request"
 import type { AnnualLeaveBalance, AnnualLeavePolicy } from "@/types/annual-leave"
 
-const statusColors = {
-  "대기중": "bg-yellow-100 text-yellow-800",
-  "승인됨": "bg-green-100 text-green-800",
-  "반려됨": "bg-red-100 text-red-800",
-  "취소됨": "bg-gray-100 text-gray-800",
+const leaveTypeColors = {
+  "연차": "bg-[#eff6ff] text-[#2563eb] border-[#dbeafe]",
+  "오전반차": "bg-[#f5f3ff] text-[#7c3aed] border-[#e9d5ff]",
+  "오후반차": "bg-[#fdf4ff] text-[#a855f7] border-[#f3e8ff]",
+  "특별휴가": "bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]",
+  "병가": "bg-[#fef2f2] text-[#dc2626] border-[#fecaca]",
+  "경조휴가": "bg-[#f8fafc] text-[#64748b] border-[#e2e8f0]",
 }
 
-// 휴가 유형별 색상 - 동적으로 처리
 const getLeaveTypeColor = (leaveType: string) => {
-  // 기본 색상 맵
-  const colorMap: Record<string, string> = {
-    "연차": "bg-blue-100 text-blue-800",
-    "오전반차": "bg-purple-100 text-purple-800",
-    "오후반차": "bg-indigo-100 text-indigo-800",
-    "특별 휴가": "bg-green-100 text-green-800",
-    "병가": "bg-red-100 text-red-800",
-    "경조휴가": "bg-gray-100 text-gray-800",
-  }
-  // 정의되지 않은 휴가 유형은 기본 색상 사용
-  return colorMap[leaveType] || "bg-orange-100 text-orange-800"
+  return leaveTypeColors[leaveType as keyof typeof leaveTypeColors] || "bg-[#fff7ed] text-[#ea580c] border-[#fed7aa]"
 }
 
 export default function LeaveRequestPage() {
@@ -47,6 +38,7 @@ export default function LeaveRequestPage() {
   const [showRequestDialog, setShowRequestDialog] = useState(false)
   const [showPolicyDialog, setShowPolicyDialog] = useState(false)
   const [activePolicy, setActivePolicy] = useState<AnnualLeavePolicy | null>(null)
+  const [statusFilter, setStatusFilter] = useState("all")
 
   useEffect(() => {
     loadData()
@@ -169,202 +161,228 @@ export default function LeaveRequestPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return format(new Date(dateString), "yyyy년 M월 d일", { locale: ko })
+    const date = new Date(dateString)
+    const year = date.getFullYear().toString().slice(-2) // 마지막 2자리만
+    const month = date.getMonth() + 1
+    const day = date.getDate()
+    return `${year}년 ${month}월 ${day}일`
   }
 
   const formatDateTime = (dateString: string) => {
     return format(new Date(dateString), "yyyy년 M월 d일 HH:mm", { locale: ko })
   }
 
+  const getFilteredRequests = (filter: string) => {
+    if (filter === "all") return leaveRequests
+    return leaveRequests.filter(req => req.status === filter)
+  }
+
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">연차 신청</h1>
-        </div>
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-gray-600">로딩 중...</p>
+      <div className="min-h-screen bg-white">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+          <div className="mb-6 md:mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">연차 신청</h1>
+              </div>
+            </div>
+          </div>
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5e6ad2] mx-auto"></div>
+            <p className="mt-2 text-[#718096]">로딩 중...</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">연차 신청</h1>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowPolicyDialog(true)}
-            className="flex items-center gap-2"
-          >
-            <Eye className="h-4 w-4" />
-            연차 정책 보기
-          </Button>
-          <Button onClick={() => setShowRequestDialog(true)} className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            연차 신청
-          </Button>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Header */}
+        <div className="mb-6 md:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">연차 신청</h1>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* 연차 잔액 카드 */}
-      {balance && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5" />
-              연차 잔액
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{balance.current_balance}</div>
-                <div className="text-sm text-gray-600">잔여 연차</div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column: Balance & Actions */}
+          <div className="lg:col-span-1 space-y-4">
+
+            {/* Balance Card - Responsive */}
+            {balance && (
+              <Card className="bg-gradient-to-br from-[#5e6ad2] to-[#8b7cf6] text-white border-0">
+                <CardContent className="p-4 md:p-6 text-center">
+                  <div className="text-3xl md:text-4xl font-bold mb-2">{balance.current_balance}일</div>
+                  <div className="text-sm md:text-base opacity-90 mb-4 md:mb-6">사용 가능한 연차</div>
+                  
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-3 gap-3 md:gap-4 pt-3 md:pt-4 border-t border-white/20">
+                    <div className="text-center">
+                      <div className="text-lg md:text-xl font-semibold">{balance.total_granted}</div>
+                      <div className="text-xs md:text-sm opacity-80">부여</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg md:text-xl font-semibold">{balance.total_used}</div>
+                      <div className="text-xs md:text-sm opacity-80">사용</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg md:text-xl font-semibold">{balance.total_expired}</div>
+                      <div className="text-xs md:text-sm opacity-80">소멸</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Action Buttons - Responsive */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-3">
+              <Button 
+                onClick={() => setShowRequestDialog(true)} 
+                className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white h-12 md:h-10 lg:h-12"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                연차 신청
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowPolicyDialog(true)}
+                className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] h-12 md:h-10 lg:h-12"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                정책 보기
+              </Button>
+            </div>
+
+          </div>
+
+          {/* Right Column: Request List */}
+          <div className="lg:col-span-2 space-y-4">
+
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <h3 className="text-base md:text-lg font-medium text-[#0a0b0c]">신청 내역</h3>
+              
+              {/* Filter Controls - Mobile: Dropdown, Desktop: Buttons */}
+              <div className="sm:hidden">
+                <select 
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full text-sm bg-white border border-[#f3f4f6] rounded-lg px-3 py-2 text-[#718096]"
+                >
+                  <option value="all">전체 보기</option>
+                  <option value="대기중">대기중</option>
+                  <option value="승인됨">승인됨</option>
+                  <option value="반려됨">반려됨</option>
+                  <option value="취소됨">취소됨</option>
+                </select>
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{balance.total_granted}</div>
-                <div className="text-sm text-gray-600">총 부여</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-red-600">{balance.total_used}</div>
-                <div className="text-sm text-gray-600">사용</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-600">{balance.total_expired}</div>
-                <div className="text-sm text-gray-600">소멸</div>
+              
+              <div className="hidden sm:flex gap-2">
+                {["all", "대기중", "승인됨", "반려됨", "취소됨"].map((filter) => (
+                  <Button
+                    key={filter}
+                    size="sm"
+                    variant={statusFilter === filter ? "default" : "outline"}
+                    onClick={() => setStatusFilter(filter)}
+                    className={`text-xs h-8 ${
+                      statusFilter === filter
+                        ? "bg-[#5e6ad2] text-white hover:bg-[#4e5ac2]"
+                        : "border-[#f3f4f6] text-[#718096] hover:bg-[#fafbfb]"
+                    }`}
+                  >
+                    {filter === "all" ? "전체" : filter}
+                  </Button>
+                ))}
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 연차 신청 목록 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            연차 신청 내역
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="all" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="all">전체</TabsTrigger>
-              <TabsTrigger value="대기중">대기중</TabsTrigger>
-              <TabsTrigger value="승인됨">승인됨</TabsTrigger>
-              <TabsTrigger value="반려됨">반려됨</TabsTrigger>
-              <TabsTrigger value="취소됨">취소됨</TabsTrigger>
-            </TabsList>
-
-            {["all", "대기중", "승인됨", "반려됨", "취소됨"].map((status) => (
-              <TabsContent key={status} value={status} className="space-y-4">
-                {leaveRequests
-                  .filter((request) => status === "all" || request.status === status)
-                  .map((request) => (
-                    <Card key={request.id} className="border-l-4 border-l-blue-500">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <Badge className={getLeaveTypeColor(request.leave_type)}>
-                                {request.leave_type}
-                              </Badge>
-                              <Badge className={statusColors[request.status]}>
-                                {request.status}
-                              </Badge>
-                              <span className="text-sm text-gray-600">
-                                {request.total_days}일
-                              </span>
-                            </div>
-                            
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-sm">
-                                <CalendarDays className="h-4 w-4" />
-                                <span>
-                                  {request.start_date === request.end_date
-                                    ? formatDate(request.start_date)
-                                    : `${formatDate(request.start_date)} ~ ${formatDate(request.end_date)}`
-                                  }
-                                </span>
-                              </div>
-                              
-                              <div className="flex items-center gap-2 text-sm">
-                                <Clock className="h-4 w-4" />
-                                <span>신청일: {formatDateTime(request.requested_at)}</span>
-                              </div>
-                              
-                              {request.reason && (
-                                <div className="text-sm text-gray-600">
-                                  사유: {request.reason}
-                                </div>
-                              )}
-                              
-                              {request.status === "승인됨" && request.approved_at && (
-                                <div className="text-sm text-green-600">
-                                  승인일: {formatDateTime(request.approved_at)}
-                                </div>
-                              )}
-                              
-                              {request.status === "반려됨" && request.rejected_reason && (
-                                <div className="text-sm text-red-600">
-                                  반려 사유: {request.rejected_reason}
-                                </div>
-                              )}
-                              
-                              {request.status === "취소됨" && request.cancelled_at && (
-                                <div className="text-sm text-gray-600">
-                                  취소일: {formatDateTime(request.cancelled_at)}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {canCancelRequest(request) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleCancelRequest(request.id)}
-                              className="flex items-center gap-1 text-red-600 hover:text-red-700"
-                            >
-                              <X className="h-3 w-3" />
-                              취소
-                            </Button>
-                          )}
+            
+            {/* Request Cards - Responsive Layout */}
+            <div className="space-y-3">
+              {getFilteredRequests(statusFilter).map((request) => (
+                <Card key={request.id} className="bg-[#fafbfb] border-[#f3f4f6] hover:shadow-sm transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      {/* Left: Main Info */}
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge className={`text-xs border ${getLeaveTypeColor(request.leave_type)}`}>
+                            {request.leave_type}
+                          </Badge>
+                          <span className="text-xs text-[#718096]">{request.total_days}일</span>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                
-                {leaveRequests.filter((request) => status === "all" || request.status === status).length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    {status === "all" ? "연차 신청 내역이 없습니다." : `${status} 상태의 신청이 없습니다.`}
-                  </div>
-                )}
-              </TabsContent>
-            ))}
-          </Tabs>
-        </CardContent>
-      </Card>
+                        
+                        <div>
+                          <div className="text-sm md:text-base font-medium text-[#0a0b0c] mb-1">
+                            {request.total_days > 1 
+                              ? `${formatDate(request.start_date)} ~ ${formatDate(request.end_date)}`
+                              : formatDate(request.start_date)
+                            }
+                          </div>
+                          <div className="text-xs md:text-sm text-[#718096]">
+                            {request.reason || '-'}
+                          </div>
+                        </div>
+                      </div>
 
-      {/* 연차 신청 다이얼로그 */}
-      <LeaveRequestFormDialog
-        open={showRequestDialog}
-        onOpenChange={setShowRequestDialog}
-        onSubmit={handleRequestSubmit}
-        currentBalance={balance?.current_balance || 0}
-        memberId={currentUser?.id || ""}
-      />
-      
-      {/* 연차 정책 보기 다이얼로그 */}
-      <AnnualLeavePolicyViewDialog
-        open={showPolicyDialog}
-        onOpenChange={setShowPolicyDialog}
-        policy={activePolicy}
-      />
+                      {/* Right: Status & Actions */}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-medium ${
+                          request.status === "대기중" ? "text-[#ea580c]" :
+                          request.status === "승인됨" ? "text-[#16a34a]" :
+                          request.status === "반려됨" ? "text-[#dc2626]" :
+                          "text-[#64748b]"
+                        }`}>
+                          {request.status}
+                        </span>
+                        {canCancelRequest(request) && (
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={() => handleCancelRequest(request.id)}
+                            className="text-[#718096] hover:bg-[#f8fafc] hover:text-[#4a5568] h-5 w-5 p-0"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              
+              {getFilteredRequests(statusFilter).length === 0 && (
+                <div className="text-center py-8 md:py-12">
+                  <div className="text-4xl md:text-5xl mb-3">📋</div>
+                  <div className="text-sm md:text-base text-[#718096]">
+                    {statusFilter === "all" ? "신청 내역이 없습니다." : `${statusFilter} 상태의 신청이 없습니다.`}
+                  </div>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+
+        {/* 연차 신청 다이얼로그 */}
+        <LeaveRequestFormDialog
+          open={showRequestDialog}
+          onOpenChange={setShowRequestDialog}
+          onSubmit={handleRequestSubmit}
+          currentBalance={balance?.current_balance || 0}
+          memberId={currentUser?.id || ""}
+        />
+        
+        {/* 연차 정책 보기 다이얼로그 */}
+        <AnnualLeavePolicyViewDialog
+          open={showPolicyDialog}
+          onOpenChange={setShowPolicyDialog}
+          policy={activePolicy}
+        />
+      </div>
     </div>
   )
 }

@@ -157,31 +157,36 @@ export default function PasswordChange() {
 
   if (!currentUser) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">비밀번호 변경</h1>
-          <p className="text-gray-600">로딩 중...</p>
+      <div className="min-h-screen bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+          <div className="flex justify-center">
+            <div className="w-full max-w-md space-y-6">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">비밀번호 변경</h1>
+              </div>
+              <p className="text-sm text-[#718096]">로딩 중...</p>
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-          <KeyRound className="h-6 w-6 mr-2" />
-          비밀번호 변경
-        </h1>
-      </div>
-
-      <div className="max-w-md">
-        <Card>
-          <CardContent className="pt-6">
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Content */}
+        <div className="flex justify-center">
+          <div className="w-full max-w-md space-y-6">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">비밀번호 변경</h1>
+            </div>
+            <Card className="bg-white border-[#f3f4f6]">
+          <CardContent className="p-4 md:pt-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* 현재 비밀번호 */}
               <div className="space-y-2">
-                <Label htmlFor="currentPassword">현재 비밀번호</Label>
+                <Label htmlFor="currentPassword" className="text-sm font-medium text-[#0a0b0c]">현재 비밀번호</Label>
                 <div className="relative">
                   <Input
                     id="currentPassword"
@@ -189,19 +194,19 @@ export default function PasswordChange() {
                     value={formData.currentPassword}
                     onChange={(e) => setFormData((prev) => ({ ...prev, currentPassword: e.target.value }))}
                     placeholder="현재 비밀번호를 입력하세요"
-                    className={errors.currentPassword ? "border-red-500 pr-10" : "pr-10"}
+                    className={`bg-white border-[#f3f4f6] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2] pr-10 ${errors.currentPassword ? "border-red-500" : ""}`}
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-[#fafbfb]"
                     onClick={() => togglePasswordVisibility("current")}
                   >
                     {showPasswords.current ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
+                      <EyeOff className="h-4 w-4 text-[#718096]" />
                     ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
+                      <Eye className="h-4 w-4 text-[#718096]" />
                     )}
                   </Button>
                 </div>
@@ -215,7 +220,7 @@ export default function PasswordChange() {
 
               {/* 새 비밀번호 */}
               <div className="space-y-2">
-                <Label htmlFor="newPassword">새 비밀번호</Label>
+                <Label htmlFor="newPassword" className="text-sm font-medium text-[#0a0b0c]">새 비밀번호</Label>
                 <div className="relative">
                   <Input
                     id="newPassword"
@@ -223,25 +228,25 @@ export default function PasswordChange() {
                     value={formData.newPassword}
                     onChange={(e) => setFormData((prev) => ({ ...prev, newPassword: e.target.value }))}
                     placeholder="새 비밀번호를 입력하세요"
-                    className={errors.newPassword ? "border-red-500 pr-10" : "pr-10"}
+                    className={`bg-white border-[#f3f4f6] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2] pr-10 ${errors.newPassword ? "border-red-500" : ""}`}
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-[#fafbfb]"
                     onClick={() => togglePasswordVisibility("new")}
                   >
                     {showPasswords.new ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
+                      <EyeOff className="h-4 w-4 text-[#718096]" />
                     ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
+                      <Eye className="h-4 w-4 text-[#718096]" />
                     )}
                   </Button>
                 </div>
                 {formData.newPassword && (
                   <div className="flex items-center space-x-2 text-sm">
-                    <span className="text-gray-600">강도:</span>
+                    <span className="text-[#718096]">강도:</span>
                     <span className={passwordStrength.color}>{passwordStrength.text}</span>
                     <div className="flex space-x-1">
                       {[1, 2, 3].map((level) => (
@@ -254,7 +259,7 @@ export default function PasswordChange() {
                                 : level === 2
                                   ? "bg-yellow-500"
                                   : "bg-green-500"
-                              : "bg-gray-200"
+                              : "bg-[#f3f4f6]"
                           }`}
                         />
                       ))}
@@ -271,7 +276,7 @@ export default function PasswordChange() {
 
               {/* 새 비밀번호 확인 */}
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">새 비밀번호 확인</Label>
+                <Label htmlFor="confirmPassword" className="text-sm font-medium text-[#0a0b0c]">새 비밀번호 확인</Label>
                 <div className="relative">
                   <Input
                     id="confirmPassword"
@@ -279,19 +284,19 @@ export default function PasswordChange() {
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData((prev) => ({ ...prev, confirmPassword: e.target.value }))}
                     placeholder="새 비밀번호를 다시 입력하세요"
-                    className={errors.confirmPassword ? "border-red-500 pr-10" : "pr-10"}
+                    className={`bg-white border-[#f3f4f6] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2] pr-10 ${errors.confirmPassword ? "border-red-500" : ""}`}
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-[#fafbfb]"
                     onClick={() => togglePasswordVisibility("confirm")}
                   >
                     {showPasswords.confirm ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
+                      <EyeOff className="h-4 w-4 text-[#718096]" />
                     ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
+                      <Eye className="h-4 w-4 text-[#718096]" />
                     )}
                   </Button>
                 </div>
@@ -310,23 +315,27 @@ export default function PasswordChange() {
               </div>
 
               {/* 안내 메시지 */}
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
+              <Alert className="bg-[#fafbfb] border-[#f3f4f6]">
                 <AlertDescription>
-                  <ul className="text-sm space-y-1">
-                    <li>• 비밀번호는 최소 4자 이상, 최대 20자까지 가능합니다</li>
-                    <li>• 현재 비밀번호와 다른 비밀번호를 입력해주세요</li>
-                    <li>• 안전한 비밀번호 사용을 권장합니다</li>
+                  <ul className="text-sm space-y-1 text-[#4a5568]">
+                    <li>• 최소 4자부터 최대 20자까지 입력 가능합니다</li>
+                    <li>• 현재 비밀번호와 다른 값을 사용해주세요</li>
                   </ul>
                 </AlertDescription>
               </Alert>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button 
+                type="submit" 
+                className="w-full bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white" 
+                disabled={isLoading}
+              >
                 {isLoading ? "변경 중..." : "비밀번호 변경"}
               </Button>
             </form>
           </CardContent>
-        </Card>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   )

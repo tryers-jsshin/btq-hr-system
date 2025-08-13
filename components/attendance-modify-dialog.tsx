@@ -96,32 +96,34 @@ export function AttendanceModifyDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent>
+      <DialogContent className="!w-[calc(100%-2rem)] sm:!w-full sm:max-w-[500px] max-h-[90vh] overflow-y-auto rounded-xl bg-white border-[#f3f4f6]">
         <DialogHeader>
-          <DialogTitle>근태 기록 수정</DialogTitle>
+          <DialogTitle className="text-left text-[#0a0b0c]">
+            근태 기록 수정
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* 기본 정보 */}
-          <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+          <div className="bg-[#fafbfb] rounded-lg p-4 space-y-2 border border-[#f3f4f6]">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">날짜</span>
-              <span className="font-medium">
-                {format(new Date(record.work_date), "yyyy년 M월 d일 (E)", { locale: ko })}
+              <span className="text-sm text-[#718096]">날짜</span>
+              <span className="font-medium text-[#0a0b0c]">
+                {format(new Date(record.work_date), "yy.M.d(E)", { locale: ko })}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">이름</span>
-              <span className="font-medium">{record.member_name}</span>
+              <span className="text-sm text-[#718096]">이름</span>
+              <span className="font-medium text-[#0a0b0c]">{record.member_name}</span>
             </div>
             {record.work_type_name && (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">근무유형</span>
+                <span className="text-sm text-[#718096]">근무유형</span>
                 <span
-                  className="px-2 py-1 rounded text-sm"
+                  className="px-2 py-1 rounded text-xs font-medium"
                   style={{
-                    backgroundColor: record.work_type_bgcolor || "#e5e7eb",
-                    color: record.work_type_fontcolor || "#000000",
+                    backgroundColor: record.work_type_bgcolor || "#f3f4f6",
+                    color: record.work_type_fontcolor || "#4a5568",
                   }}
                 >
                   {record.work_type_name}
@@ -130,8 +132,8 @@ export function AttendanceModifyDialog({
             )}
             {record.scheduled_start_time && record.scheduled_end_time && (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">정규 근무시간</span>
-                <span className="font-medium">
+                <span className="text-sm text-[#718096]">정규 근무시간</span>
+                <span className="font-medium text-[#0a0b0c]">
                   {formatTimeToHHMM(record.scheduled_start_time)} ~ {formatTimeToHHMM(record.scheduled_end_time)}
                 </span>
               </div>
@@ -152,9 +154,10 @@ export function AttendanceModifyDialog({
                 value={checkInTime}
                 onChange={(e) => setCheckInTime(e.target.value)}
                 disabled={submitting}
+                className="bg-[#fafbfb] border-[#f3f4f6] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2]"
               />
               {record.check_in_time && checkInTime !== formatTimeToHHMM(record.check_in_time) && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-[#718096]">
                   기존: {formatTimeToHHMM(record.check_in_time)}
                 </p>
               )}
@@ -172,9 +175,10 @@ export function AttendanceModifyDialog({
                 value={checkOutTime}
                 onChange={(e) => setCheckOutTime(e.target.value)}
                 disabled={submitting}
+                className="bg-[#fafbfb] border-[#f3f4f6] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2]"
               />
               {record.check_out_time && checkOutTime !== formatTimeToHHMM(record.check_out_time) && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-[#718096]">
                   기존: {formatTimeToHHMM(record.check_out_time)}
                 </p>
               )}
@@ -183,8 +187,8 @@ export function AttendanceModifyDialog({
 
           {/* 수정 사유 */}
           <div className="space-y-2">
-            <Label htmlFor="reason">
-              수정 사유 <span className="text-red-500">*</span>
+            <Label htmlFor="reason" className="text-[#0a0b0c]">
+              수정 사유 <span className="text-[#dc2626]">*</span>
             </Label>
             <Textarea
               id="reason"
@@ -193,13 +197,14 @@ export function AttendanceModifyDialog({
               onChange={(e) => setReason(e.target.value)}
               disabled={submitting}
               rows={3}
+              className="bg-[#fafbfb] border-[#f3f4f6] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2]"
             />
           </div>
 
           {/* 안내 메시지 */}
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
+          <Alert className="bg-[#eff6ff] border-[#dbeafe]">
+            <AlertCircle className="h-4 w-4 text-[#2563eb]" />
+            <AlertDescription className="text-[#4a5568]">
               <ul className="text-sm space-y-1">
                 <li>• 수정 후 지각, 조기퇴근, 초과근무가 자동으로 재계산됩니다.</li>
                 <li>• 수정 이력은 시스템에 기록됩니다.</li>
@@ -210,20 +215,20 @@ export function AttendanceModifyDialog({
 
           {/* 오류 메시지 */}
           {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+            <Alert className="bg-[#fef2f2] border-[#fecaca]">
+              <AlertCircle className="h-4 w-4 text-[#dc2626]" />
+              <AlertDescription className="text-[#dc2626]">{error}</AlertDescription>
             </Alert>
           )}
 
           {/* 이전 수정 이력 */}
           {record.is_modified && record.modified_at && (
-            <Alert className="bg-blue-50 border-blue-200">
-              <AlertCircle className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-blue-800">
-                <p className="font-medium">이전 수정 이력</p>
+            <Alert className="bg-[#f5f3ff] border-[#e9d5ff]">
+              <AlertCircle className="h-4 w-4 text-[#7c3aed]" />
+              <AlertDescription className="text-[#4a5568]">
+                <p className="font-medium text-[#0a0b0c]">이전 수정 이력</p>
                 <p className="text-sm">
-                  {format(new Date(record.modified_at), "yyyy년 M월 d일 HH:mm", { locale: ko })}
+                  {format(new Date(record.modified_at), "yy.M.d HH:mm", { locale: ko })}
                   {record.modified_by && ` - ${record.modified_by}`}
                 </p>
                 {record.modification_reason && (
@@ -235,10 +240,19 @@ export function AttendanceModifyDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={submitting}>
+          <Button 
+            variant="outline" 
+            onClick={handleClose} 
+            disabled={submitting}
+            className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb]"
+          >
             취소
           </Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={submitting}
+            className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white"
+          >
             {submitting ? "수정 중..." : "수정"}
           </Button>
         </DialogFooter>

@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { User, Phone, Calendar, Hash, Building } from 'lucide-react'
+import { Separator } from "@/components/ui/separator"
 import { supabaseWorkTypeStorage } from "@/lib/supabase-work-type-storage"
 import type { Database } from "@/types/database"
 
@@ -46,7 +45,7 @@ export function MemberDetailDialog({ open, onOpenChange, member }: MemberDetailD
 
   const getWorkTypeInfo = (workTypeId: string) => {
     if (workTypeId === "") {
-      return { name: "미설정", bgcolor: "#f3f4f6", fontcolor: "#6b7280" }
+      return { name: "-", bgcolor: "#f3f4f6", fontcolor: "#6b7280" }
     }
 
     const workType = workTypes.find((wt) => wt.id === workTypeId)
@@ -61,106 +60,103 @@ export function MemberDetailDialog({ open, onOpenChange, member }: MemberDetailD
     }
   }
 
-  const getWorkingDaysCount = () => {
-    const schedule = member.weekly_schedule
-    const workingDays = Object.values(schedule).filter((day) => day !== "off" && day !== "").length
-    return workingDays
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center">
-            <User className="h-5 w-5 mr-2" />
+      <DialogContent className="!w-[calc(100%-2rem)] sm:!w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl">
+        <DialogHeader className="text-left">
+          <DialogTitle className="text-[#0a0b0c]">
             구성원 상세 정보
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* 기본 정보 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center justify-between">
-                <span>기본 정보</span>
-                {member.role === "관리자" && <Badge className="bg-orange-500">관리자</Badge>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center text-sm font-medium text-gray-500">
-                    <User className="h-4 w-4 mr-2" />
-                    이름
-                  </div>
-                  <div className="text-lg font-semibold">{member.name}</div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center text-sm font-medium text-gray-500">
-                    <Hash className="h-4 w-4 mr-2" />
-                    사원번호
-                  </div>
-                  <div className="text-lg font-mono">{member.employee_number}</div>
-                </div>
+        <div className="space-y-6 py-4">
+          {/* 기본 정보 섹션 */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-4 bg-[#5e6ad2] rounded-full" />
+              <h3 className="text-sm font-semibold text-[#0a0b0c]">기본 정보</h3>
+            </div>
+            
+            <div className="bg-[#fafbfb] rounded-lg p-4 space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-[#718096]">이름</span>
+                <span className="text-[#0a0b0c] font-medium">{member.name}</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center text-sm font-medium text-gray-500">
-                    <Building className="h-4 w-4 mr-2" />
-                    소속팀
-                  </div>
-                  <Badge variant="secondary">{member.team_name}</Badge>
+              {member.employee_number && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#718096]">사번</span>
+                  <span className="text-[#0a0b0c]">{member.employee_number}</span>
                 </div>
+              )}
 
-                <div className="space-y-2">
-                  <div className="flex items-center text-sm font-medium text-gray-500">
-                    <Phone className="h-4 w-4 mr-2" />
-                    전화번호
-                  </div>
-                  <div>{member.phone}</div>
+              {member.team_name && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#718096]">소속팀</span>
+                  <span className="text-[#0a0b0c]">{member.team_name}</span>
                 </div>
-              </div>
+              )}
 
-              <div className="space-y-2">
-                <div className="flex items-center text-sm font-medium text-gray-500">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  입사일
+              {member.phone && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#718096]">연락처</span>
+                  <span className="text-[#0a0b0c]">{member.phone}</span>
                 </div>
-                <div>{new Date(member.join_date).toLocaleDateString("ko-KR")}</div>
-              </div>
-            </CardContent>
-          </Card>
+              )}
 
-          {/* 주간 근무 스케줄 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">주간 근무 스케줄</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="text-sm text-gray-600">주 {getWorkingDaysCount()}일 근무</div>
-
-                <div className="grid grid-cols-7 gap-2">
-                  {DAYS.map((day) => {
-                    const workTypeInfo = getWorkTypeInfo(member.weekly_schedule[day.key])
-                    return (
-                      <div key={day.key} className="text-center">
-                        <div className="text-xs font-medium text-gray-500 mb-2">{day.label}</div>
-                        <div
-                          className="p-2 rounded-lg text-xs font-medium"
-                          style={{ backgroundColor: workTypeInfo.bgcolor, color: workTypeInfo.fontcolor }}
-                        >
-                          <div>{workTypeInfo.name}</div>
-                        </div>
-                      </div>
-                    )
+              <div className="flex justify-between text-sm">
+                <span className="text-[#718096]">입사일</span>
+                <span className="text-[#0a0b0c]">
+                  {new Date(member.join_date).toLocaleDateString("ko-KR", {
+                    year: "numeric",
+                    month: "numeric",
+                    day: "numeric"
                   })}
-                </div>
+                </span>
               </div>
-            </CardContent>
-          </Card>
+
+              <div className="flex justify-between text-sm">
+                <span className="text-[#718096]">역할</span>
+                <span className="text-[#0a0b0c]">
+                  {member.role === "관리자" ? (
+                    <Badge className="bg-[#5e6ad2] text-white text-xs px-2 py-0.5">관리자</Badge>
+                  ) : (
+                    "일반직원"
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <Separator className="bg-[#f3f4f6]" />
+
+          {/* 주간 근무 스케줄 섹션 */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-4 bg-[#5e6ad2] rounded-full" />
+              <h3 className="text-sm font-semibold text-[#0a0b0c]">주간 근무 스케줄</h3>
+            </div>
+            <div className="bg-[#fafbfb] rounded-lg p-4 border border-[#f3f4f6]">
+
+              <div className="grid grid-cols-7 gap-2">
+                {DAYS.map((day) => {
+                  const workTypeInfo = getWorkTypeInfo(member.weekly_schedule[day.key])
+                  return (
+                    <div key={day.key} className="text-center">
+                      <div className="text-xs font-medium text-[#718096] mb-2">{day.label.slice(0, 1)}</div>
+                      <div
+                        className="py-2 px-0.5 rounded-md text-[10px] font-medium transition-all"
+                        style={{ backgroundColor: workTypeInfo.bgcolor, color: workTypeInfo.fontcolor }}
+                      >
+                        {workTypeInfo.name}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

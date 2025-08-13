@@ -215,155 +215,192 @@ export default function AllAttendancePage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold">구성원 근태 관리</h1>
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-gray-600">로딩 중...</p>
+      <div className="min-h-screen bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-48 mb-2"></div>
+            <div className="h-4 bg-gray-100 rounded w-64 mb-8"></div>
+            <div className="h-10 bg-gray-100 rounded mb-6"></div>
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-16 bg-gray-50 rounded"></div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">구성원 근태 관리</h1>
-        <div className="flex items-center gap-2">
-          {/* 구성원 필터 */}
-          <select
-            value={selectedMemberFilter}
-            onChange={(e) => setSelectedMemberFilter(e.target.value)}
-            className="px-3 py-2 border rounded-md"
-          >
-            <option value="all">전체 ({memberList.length}명)</option>
-            {memberList.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name}
-              </option>
-            ))}
-          </select>
-          
-          {/* 월 선택 */}
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => {
-              setSelectedMonth(e.target.value)
-              setSelectedMemberFilter("all") // 월 변경 시 필터 초기화
-            }}
-            className="px-3 py-2 border rounded-md"
-          />
-          
-          <Button
-            variant="outline"
-            onClick={() => setShowUploadDialog(true)}
-            className="flex items-center gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            CSV 업로드
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleExportCsv}
-            className="flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            내보내기
-          </Button>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">구성원 근태 관리</h1>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* 구성원 필터 */}
+              <select
+                value={selectedMemberFilter}
+                onChange={(e) => setSelectedMemberFilter(e.target.value)}
+                className="px-3 py-2 border border-[#f3f4f6] rounded-md text-sm bg-[#fafbfb] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2] transition-all duration-100"
+              >
+                <option value="all">전체 ({memberList.length}명)</option>
+                {memberList.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+              
+              {/* 월 선택 */}
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value)
+                  setSelectedMemberFilter("all") // 월 변경 시 필터 초기화
+                }}
+                className="px-3 py-2 border border-[#f3f4f6] rounded-md text-sm bg-[#fafbfb] focus:border-[#5e6ad2] focus:ring-1 focus:ring-[#5e6ad2] transition-all duration-100"
+              />
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* 근태 기록 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            전체 구성원 근태 기록
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+        {/* 근태 기록 테이블 */}
+        <div className="bg-white rounded-lg border border-[#f3f4f6] overflow-hidden">
+          <div className="p-4 sm:p-6 border-b border-[#f3f4f6]">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#0a0b0c] flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-[#5e6ad2]" />
+                전체 구성원 근태 기록
+              </h2>
+              {/* CSV 버튼 - 데스크탑에서만 표시 */}
+              <div className="hidden sm:flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowUploadDialog(true)}
+                  size="sm"
+                  className="flex items-center gap-2 border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] rounded-md h-8 px-3 text-xs font-medium transition-colors duration-100"
+                >
+                  <Upload className="h-3 w-3" />
+                  CSV 업로드
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleExportCsv}
+                  size="sm"
+                  className="flex items-center gap-2 border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] rounded-md h-8 px-3 text-xs font-medium transition-colors duration-100"
+                >
+                  <Download className="h-3 w-3" />
+                  내보내기
+                </Button>
+              </div>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b">
-                  <th className="text-left p-2">날짜</th>
-                  <th className="text-left p-2">이름</th>
-                  <th className="text-left p-2">팀</th>
-                  <th className="text-left p-2">근무유형</th>
-                  <th className="text-left p-2">출근</th>
-                  <th className="text-left p-2">퇴근</th>
-                  <th className="text-left p-2">지각</th>
-                  <th className="text-left p-2">조기퇴근</th>
-                  <th className="text-left p-2">초과근무</th>
-                  <th className="text-left p-2">작업</th>
+                <tr className="bg-[#fafbfb] border-b border-[#f3f4f6]">
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">날짜</th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">이름</th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">팀</th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    <span className="hidden sm:inline">근무유형</span>
+                    <span className="sm:hidden">유형</span>
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">출근</th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">퇴근</th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">지각</th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    <span className="hidden sm:inline">조기퇴근</span>
+                    <span className="sm:hidden">조퇴</span>
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    <span className="hidden sm:inline">초과근무</span>
+                    <span className="sm:hidden">초과</span>
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">작업</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="bg-white divide-y divide-[#f3f4f6]">
                 {filteredRecords.map((record) => (
-                  <tr key={record.id} className="border-b hover:bg-gray-50">
-                    <td className="p-2">
-                      {format(new Date(record.work_date), "M/d (E)", { locale: ko })}
+                  <tr key={record.id} className="hover:bg-[#f7f8f9] transition-colors duration-100">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm text-[#0a0b0c]">
+                      {format(new Date(record.work_date), "yy.M.d(E)", { locale: ko })}
                     </td>
-                    <td className="p-2">{record.member_name}</td>
-                    <td className="p-2">{record.team_name || "-"}</td>
-                    <td className="p-2">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm text-[#0a0b0c] font-medium">
+                      {record.member_name}
+                    </td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm text-[#718096]">
+                      {record.team_name || "-"}
+                    </td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
                       {record.work_type_name ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-center gap-1 sm:gap-2">
                           <span
-                            className="px-2 py-1 rounded text-sm"
+                            className="px-1 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-medium"
                             style={{
-                              backgroundColor: record.work_type_bgcolor || "#e5e7eb",
-                              color: record.work_type_fontcolor || "#000000",
+                              backgroundColor: record.work_type_bgcolor || "#f3f4f6",
+                              color: record.work_type_fontcolor || "#4a5568",
                             }}
                           >
                             {record.work_type_name}
                           </span>
-                          {/* 부분 휴가인 경우 실제 근무시간 표시 */}
+                          {/* 부분 휴가인 경우 실제 근무시간 표시 - 모바일에서는 숨김 */}
                           {record.is_leave && record.deduction_days !== null && record.deduction_days !== undefined && record.deduction_days < 1 && 
                            record.scheduled_start_time && record.scheduled_end_time && (
-                            <span className="text-xs text-gray-500">
+                            <span className="hidden sm:inline text-xs text-[#718096]">
                               (근무: {formatTime(record.scheduled_start_time)} - {formatTime(record.scheduled_end_time)})
                             </span>
                           )}
                         </div>
                       ) : (
-                        "-"
+                        <span className="text-xs sm:text-sm text-[#718096]">-</span>
                       )}
                     </td>
-                    <td className="p-2">
-                      <span className={record.is_late ? "text-red-600 font-medium" : ""}>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className={`text-xs sm:text-sm ${record.is_late ? "text-[#dc2626] font-medium" : "text-[#4a5568]"}`}>
                         {formatTime(record.check_in_time)}
                       </span>
                     </td>
-                    <td className="p-2">
-                      <span className={record.is_early_leave ? "text-orange-600 font-medium" : ""}>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className={`text-xs sm:text-sm ${record.is_early_leave ? "text-[#ea580c] font-medium" : "text-[#4a5568]"}`}>
                         {formatTime(record.check_out_time)}
                       </span>
                     </td>
-                    <td className="p-2">
-                      {record.scheduled_start_time && record.late_minutes > 0 && (
-                        <span className="text-red-600">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      {record.scheduled_start_time && record.late_minutes > 0 ? (
+                        <span className="text-xs sm:text-sm text-[#dc2626] font-medium">
                           {formatMinutes(record.late_minutes)}
                         </span>
+                      ) : (
+                        <span className="text-xs sm:text-sm text-[#718096]">-</span>
                       )}
                     </td>
-                    <td className="p-2">
-                      {record.scheduled_end_time && record.early_leave_minutes > 0 && (
-                        <span className="text-orange-600">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      {record.scheduled_end_time && record.early_leave_minutes > 0 ? (
+                        <span className="text-xs sm:text-sm text-[#ea580c] font-medium">
                           {formatMinutes(record.early_leave_minutes)}
                         </span>
+                      ) : (
+                        <span className="text-xs sm:text-sm text-[#718096]">-</span>
                       )}
                     </td>
-                    <td className="p-2">
-                      {record.overtime_minutes > 0 && (
-                        <span className={!record.scheduled_end_time ? "text-purple-600 font-medium" : "text-blue-600"}>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      {record.overtime_minutes > 0 ? (
+                        <span className={`text-xs sm:text-sm font-medium ${!record.scheduled_end_time ? "text-[#7c3aed]" : "text-[#2563eb]"}`}>
                           {formatMinutes(record.overtime_minutes)}
                         </span>
+                      ) : (
+                        <span className="text-xs sm:text-sm text-[#718096]">-</span>
                       )}
                     </td>
-                    <td className="p-2">
-                      <div className="flex items-center gap-1">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <div className="flex items-center justify-center gap-1">
                         {/* 가상 레코드가 아니거나, 출퇴근 기록이 하나라도 있는 경우만 수정 가능 */}
                         {(!record.id.startsWith('virtual_') || record.check_in_time || record.check_out_time) && (
                           <Button
@@ -373,6 +410,7 @@ export default function AllAttendancePage() {
                               setSelectedRecord(record)
                               setShowModifyDialog(true)
                             }}
+                            className="h-7 px-2 text-xs text-[#5e6ad2] hover:bg-[#f3f4f6] font-medium"
                           >
                             수정
                           </Button>
@@ -382,17 +420,17 @@ export default function AllAttendancePage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-[#dc2626] hover:text-[#dc2626] hover:bg-[#fef2f2] h-7 px-2"
                             onClick={() => {
                               setSelectedRecord(record)
                               setShowDeleteDialog(true)
                             }}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3" />
                           </Button>
                         )}
                         {record.is_modified && (
-                          <Badge variant="outline" className="ml-2">
+                          <Badge className="ml-2 bg-[#f3f4f6] text-[#718096] border-[#e5e7eb] text-[10px] px-1.5 py-0 h-4">
                             수정됨
                           </Badge>
                         )}
@@ -404,16 +442,18 @@ export default function AllAttendancePage() {
             </table>
             
             {filteredRecords.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                {attendanceRecords.length === 0 
-                  ? `${selectedMonth}월 근태 기록이 없습니다.`
-                  : `선택한 구성원의 ${selectedMonth}월 근태 기록이 없습니다.`
-                }
+              <div className="text-center py-12">
+                <Calendar className="h-12 w-12 text-[#cbd5e1] mx-auto mb-3" />
+                <p className="text-[#4a5568] font-medium">
+                  {attendanceRecords.length === 0 
+                    ? `${selectedMonth}월 근태 기록이 없습니다.`
+                    : `선택한 구성원의 ${selectedMonth}월 근태 기록이 없습니다.`
+                  }
+                </p>
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
       {/* CSV 업로드 다이얼로그 */}
       <AttendanceUploadDialog
@@ -456,6 +496,7 @@ export default function AllAttendancePage() {
           adjustedBy={currentUser?.id || ""}
         />
       )}
+      </div>
     </div>
   )
 }

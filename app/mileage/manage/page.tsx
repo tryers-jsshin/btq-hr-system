@@ -46,7 +46,7 @@ export default function MileageManagePage() {
         .from("members")
         .select("id, name, team_name, employee_number")
         .eq("status", "active")
-        .order("name")
+        .order("employee_number", { ascending: true })
 
       if (membersError) throw membersError
 
@@ -89,51 +89,100 @@ export default function MileageManagePage() {
     return `${hours}시간 ${mins}분`
   }
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">근무 마일리지</h1>
-
-      {/* 멤버별 마일리지 현황 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>멤버별 근무 마일리지 현황 ({members.length}명)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-8">데이터를 불러오는 중...</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {members.map((member) => (
-                <div key={member.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1">
-                      <div className="font-medium text-lg">{member.name}</div>
-                      <div className="text-sm text-gray-600">
-                        {member.team_name || '팀 미지정'} · {member.employee_number}
-                      </div>
-                    </div>
-                    <div className={`text-xl font-bold ${
-                      member.balance >= 0 ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {member.balance < 0 ? '-' : '+'}
-                      {formatMinutes(Math.abs(member.balance))}
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => handleMileageAdjust(member.id, member.name, member.balance)}
-                  >
-                    <Coins className="h-4 w-4 mr-2" />
-                    근무 마일리지 조정
-                  </Button>
-                </div>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-48 mb-2"></div>
+            <div className="h-4 bg-gray-100 rounded w-64 mb-8"></div>
+            <div className="bg-white rounded-lg border border-gray-200">
+              <div className="h-12 bg-gray-50 border-b border-gray-200"></div>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="h-16 bg-white border-b border-gray-100"></div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">근무 마일리지 관리</h1>
+            </div>
+          </div>
+        </div>
+
+        {/* 멤버별 마일리지 현황 */}
+        <div className="bg-white rounded-lg border border-[#f3f4f6] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-[#fafbfb] border-b border-[#f3f4f6]">
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    이름
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    사번
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    팀
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    <span className="hidden sm:inline">마일리지 잔액</span>
+                    <span className="sm:hidden">잔액</span>
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    액션
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-[#f3f4f6]">
+                {members.map((member) => (
+                  <tr 
+                    key={member.id} 
+                    className="hover:bg-[#f7f8f9] transition-colors duration-100"
+                  >
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-sm font-medium text-[#0a0b0c]">{member.name}</div>
+                    </td>
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                      <span className="text-sm text-[#4a5568]">{member.employee_number}</span>
+                    </td>
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                      <span className="text-sm text-[#4a5568]">{member.team_name || '팀 미지정'}</span>
+                    </td>
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                      <span className={`text-sm font-semibold ${
+                        member.balance >= 0 ? 'text-[#16a34a]' : 'text-[#dc2626]'
+                      }`}>
+                        {member.balance < 0 ? '-' : '+'}
+                        {formatMinutes(Math.abs(member.balance))}
+                      </span>
+                    </td>
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-[#f3f4f6] text-[#5e6ad2] hover:bg-[#fafbfb] hover:text-[#4e5ac2] font-medium transition-colors duration-100"
+                        onClick={() => handleMileageAdjust(member.id, member.name, member.balance)}
+                      >
+                        조정
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
       {/* 근무 마일리지 조정 다이얼로그 */}
       {selectedMember && currentUser && (
@@ -147,6 +196,7 @@ export default function MileageManagePage() {
           adjustedBy={currentUser.id}
         />
       )}
+      </div>
     </div>
   )
 }

@@ -73,30 +73,52 @@ export function TeamFormDialog({ open, onOpenChange, team, onSave }: TeamFormDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md bg-white">
         <DialogHeader>
-          <DialogTitle>{team ? "팀 수정" : "팀 추가"}</DialogTitle>
+          <DialogTitle className="text-lg font-semibold text-[#0a0b0c]">
+            {team ? "팀 수정" : "새 팀 추가"}
+          </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="name">팀 이름</Label>
+            <Label htmlFor="name" className="text-sm font-medium text-[#4a5568]">
+              팀 이름 <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-              placeholder="팀 이름을 입력하세요"
-              className={errors.name ? "border-red-500" : ""}
+              placeholder="예: 개발팀, 마케팅팀"
+              className={`h-10 bg-white ${
+                errors.name 
+                  ? "border-red-500 focus:border-red-500 focus:ring-red-500" 
+                  : "border-[#e5e7eb] focus:border-[#5e6ad2] focus:ring-[#5e6ad2]"
+              } placeholder:text-[#9ca3af]`}
               disabled={loading}
             />
-            {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
+            {errors.name && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <span>⚠</span> {errors.name}
+              </p>
+            )}
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => onOpenChange(false)} 
+              disabled={loading}
+              className="border-[#e5e7eb] text-[#4a5568] hover:bg-[#fafbfb] hover:text-[#0a0b0c]"
+            >
               취소
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button 
+              type="submit" 
+              disabled={loading}
+              className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white"
+            >
               {loading ? "저장 중..." : team ? "수정" : "저장"}
             </Button>
           </DialogFooter>

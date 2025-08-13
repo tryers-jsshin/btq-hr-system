@@ -7,8 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { CalendarIcon } from "lucide-react"
+import { format } from "date-fns"
+import { ko } from "date-fns/locale"
+import { cn } from "@/lib/utils"
 import { supabaseMemberStorage } from "@/lib/supabase-member-storage"
 import { supabaseTeamStorage } from "@/lib/supabase-team-storage"
 import { supabaseWorkTypeStorage } from "@/lib/supabase-work-type-storage"
@@ -49,18 +54,19 @@ export function MemberFormDialog({ open, onOpenChange, member, onSave }: MemberF
     join_date: "",
     phone: "",
     weekly_schedule: {
-      monday: "off",
-      tuesday: "off",
-      wednesday: "off",
-      thursday: "off",
-      friday: "off",
-      saturday: "off",
-      sunday: "off",
+      monday: "",
+      tuesday: "",
+      wednesday: "",
+      thursday: "",
+      friday: "",
+      saturday: "",
+      sunday: "",
     },
   })
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [teams, setTeams] = useState<Team[]>([])
-  const [workTypes, setWorkTypes] = useState<WorkType[]>([])
+  const [workTypes, setWorkTypes] = useState<any[]>([])
+  const [calendarOpen, setCalendarOpen] = useState(false)
 
   useEffect(() => {
     const loadData = async () => {
@@ -100,13 +106,13 @@ export function MemberFormDialog({ open, onOpenChange, member, onSave }: MemberF
         join_date: "",
         phone: "",
         weekly_schedule: {
-          monday: "off",
-          tuesday: "off",
-          wednesday: "off",
-          thursday: "off",
-          friday: "off",
-          saturday: "off",
-          sunday: "off",
+          monday: "",
+          tuesday: "",
+          wednesday: "",
+          thursday: "",
+          friday: "",
+          saturday: "",
+          sunday: "",
         },
       })
     }
@@ -146,6 +152,14 @@ export function MemberFormDialog({ open, onOpenChange, member, onSave }: MemberF
 
     if (!formData.phone.trim()) {
       newErrors.phone = "전화번호를 입력해주세요"
+    }
+
+    // 주간 스케줄 검증
+    const emptyScheduleDays = DAYS.filter(
+      day => !formData.weekly_schedule[day.key as keyof typeof formData.weekly_schedule]
+    )
+    if (emptyScheduleDays.length > 0) {
+      newErrors.weekly_schedule = "모든 요일의 근무 유형을 선택해주세요"
     }
 
     setErrors(newErrors)
@@ -195,7 +209,7 @@ export function MemberFormDialog({ open, onOpenChange, member, onSave }: MemberF
   // 스케줄 미리보기 섹션에서 색상 로직 변경
   const getWorkTypeInfo = (workTypeId: string) => {
     if (workTypeId === "") {
-      return { name: "미설정", bgcolor: "#f3f4f6", fontcolor: "#6b7280" }
+      return { name: "-", bgcolor: "#f3f4f6", fontcolor: "#6b7280" }
     }
 
     const workType = workTypes.find((wt) => wt.id === workTypeId)
@@ -233,128 +247,165 @@ export function MemberFormDialog({ open, onOpenChange, member, onSave }: MemberF
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{member ? "구성원 수정" : "구성원 추가"}</DialogTitle>
+      <DialogContent className="!w-[calc(100%-2rem)] sm:!w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl">
+        <DialogHeader className="text-left">
+          <DialogTitle className="text-[#0a0b0c]">
+            {member ? "구성원 정보 수정" : "새 구성원 추가"}
+          </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* 기본 정보 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">기본 정보</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">이름</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="이름을 입력하세요"
-                    className={errors.name ? "border-red-500" : ""}
-                  />
-                  {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-6 py-4">
+            {/* 기본 정보 섹션 */}
+            <div>
+              <h3 className="text-sm font-semibold text-[#0a0b0c] mb-4 flex items-center">
+                <span className="w-1 h-4 bg-[#5e6ad2] rounded-full mr-2"></span>
+                기본 정보
+              </h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name" className="text-sm font-medium text-[#4a5568]">이름 *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="홍길동"
+                      className={`h-10 ${errors.name ? "border-red-500 focus:border-red-500 focus:ring-red-500" : "border-[#e5e7eb] focus:border-[#5e6ad2] focus:ring-[#5e6ad2]"}`}
+                    />
+                    {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="employee_number" className="text-sm font-medium text-[#4a5568]">사원번호 *</Label>
+                    <Input
+                      id="employee_number"
+                      value={formData.employee_number}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, employee_number: e.target.value }))}
+                      placeholder="EMP001"
+                      className={`h-10 ${errors.employee_number ? "border-red-500 focus:border-red-500 focus:ring-red-500" : "border-[#e5e7eb] focus:border-[#5e6ad2] focus:ring-[#5e6ad2]"}`}
+                    />
+                    {errors.employee_number && <p className="text-xs text-red-500">{errors.employee_number}</p>}
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="employee_number">사원번호</Label>
-                  <Input
-                    id="employee_number"
-                    value={formData.employee_number}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, employee_number: e.target.value }))}
-                    placeholder="사원번호를 입력하세요"
-                    className={errors.employee_number ? "border-red-500" : ""}
-                  />
-                  {errors.employee_number && <p className="text-sm text-red-500">{errors.employee_number}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-[#4a5568]">팀 *</Label>
+                    <Select value={formData.team_id} onValueChange={handleTeamChange}>
+                      <SelectTrigger className={`h-10 ${errors.team_id ? "border-red-500 focus:border-red-500" : !formData.team_id ? "border-orange-300" : "border-[#e5e7eb] focus:border-[#5e6ad2]"}`}>
+                        <SelectValue placeholder="팀 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.map((team) => (
+                          <SelectItem key={team.id} value={team.id}>
+                            {team.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.team_id && <p className="text-xs text-red-500">{errors.team_id}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="join_date" className="text-sm font-medium text-[#4a5568]">입사일 *</Label>
+                    <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal h-10",
+                            !formData.join_date && "text-[#718096]",
+                            errors.join_date ? "border-red-500 focus:border-red-500" : "border-[#e5e7eb] hover:bg-[#fafbfb] focus:border-[#5e6ad2]"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {formData.join_date ? (
+                            format(new Date(formData.join_date), "yyyy년 MM월 dd일", { locale: ko })
+                          ) : (
+                            <span>날짜를 선택하세요</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={formData.join_date ? new Date(formData.join_date) : undefined}
+                          onSelect={(date) => {
+                            if (date) {
+                              setFormData((prev) => ({ ...prev, join_date: format(date, "yyyy-MM-dd") }))
+                              setCalendarOpen(false)
+                            }
+                          }}
+                          disabled={(date) => date > new Date()}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {errors.join_date && <p className="text-xs text-red-500">{errors.join_date}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone" className="text-sm font-medium text-[#4a5568]">전화번호 *</Label>
+                    <Input
+                      id="phone"
+                      value={formData.phone}
+                      onChange={handlePhoneChange}
+                      placeholder="010-1234-5678"
+                      className={`h-10 ${errors.phone ? "border-red-500 focus:border-red-500 focus:ring-red-500" : "border-[#e5e7eb] focus:border-[#5e6ad2] focus:ring-[#5e6ad2]"}`}
+                      maxLength={13}
+                    />
+                    {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-[#4a5568]">역할</Label>
+                    <Select
+                      value={formData.role}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({ ...prev, role: value as "일반직원" | "관리자" }))
+                      }
+                    >
+                      <SelectTrigger className="h-10 border-[#e5e7eb] focus:border-[#5e6ad2]">
+                        <SelectValue placeholder="역할 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="일반직원">일반직원</SelectItem>
+                        <SelectItem value="관리자">관리자</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>팀</Label>
-                  <Select value={formData.team_id} onValueChange={handleTeamChange}>
-                    <SelectTrigger className={errors.team_id ? "border-red-500" : ""}>
-                      <SelectValue placeholder="팀을 선택하세요" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {teams.map((team) => (
-                        <SelectItem key={team.id} value={team.id}>
-                          {team.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.team_id && <p className="text-sm text-red-500">{errors.team_id}</p>}
+            {/* 주간 근무 스케줄 섹션 */}
+            <div>
+              <h3 className="text-sm font-semibold text-[#0a0b0c] mb-4 flex items-center">
+                <span className="w-1 h-4 bg-[#5e6ad2] rounded-full mr-2"></span>
+                주간 근무 스케줄
+              </h3>
+              {errors.weekly_schedule && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600 flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    {errors.weekly_schedule}
+                  </p>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="join_date">입사일</Label>
-                  <Input
-                    id="join_date"
-                    type="date"
-                    value={formData.join_date}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, join_date: e.target.value }))}
-                    className={errors.join_date ? "border-red-500" : ""}
-                  />
-                  {errors.join_date && <p className="text-sm text-red-500">{errors.join_date}</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">전화번호</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={handlePhoneChange}
-                    placeholder="010-1234-5678"
-                    className={errors.phone ? "border-red-500" : ""}
-                    maxLength={13}
-                  />
-                  {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>역할</Label>
-                  <RadioGroup
-                    value={formData.role}
-                    onValueChange={(value) =>
-                      setFormData((prev) => ({ ...prev, role: value as "일반직원" | "관리자" }))
-                    }
-                    className="flex space-x-4"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="일반직원" id="employee" />
-                      <Label htmlFor="employee">일반직원</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="관리자" id="admin" />
-                      <Label htmlFor="admin">관리자</Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 주간 근무 스케줄 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">주간 근무 스케줄</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 sm:gap-3">
                 {DAYS.map((day) => (
                   <div key={day.key} className="space-y-2">
-                    <Label>{day.label}</Label>
+                    <Label className="text-xs font-medium text-[#4a5568]">{day.label}</Label>
                     <Select
                       value={formData.weekly_schedule[day.key as keyof typeof formData.weekly_schedule]}
                       onValueChange={(value) => handleScheduleChange(day.key, value)}
                     >
-                      <SelectTrigger>
-                        <SelectValue />
+                      <SelectTrigger className={`h-9 text-xs ${!formData.weekly_schedule[day.key as keyof typeof formData.weekly_schedule] ? "border-orange-300" : "border-[#e5e7eb] focus:border-[#5e6ad2]"}`}>
+                        <SelectValue placeholder="선택" />
                       </SelectTrigger>
                       <SelectContent>
                         {workTypes
@@ -371,18 +422,18 @@ export function MemberFormDialog({ open, onOpenChange, member, onSave }: MemberF
               </div>
 
               {/* 스케줄 미리보기 */}
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium mb-2">스케줄 미리보기</h4>
-                <div className="grid grid-cols-7 gap-2 text-sm">
+              <div className="mt-6 p-4 bg-[#fafbfb] rounded-lg border border-[#f3f4f6]">
+                <h4 className="text-sm font-medium text-[#4a5568] mb-3">주간 스케줄 미리보기</h4>
+                <div className="grid grid-cols-7 gap-2">
                   {DAYS.map((day) => {
                     const workTypeInfo = getWorkTypeInfo(
                       formData.weekly_schedule[day.key as keyof typeof formData.weekly_schedule],
                     )
                     return (
                       <div key={day.key} className="text-center">
-                        <div className="font-medium text-gray-600 mb-1">{day.label.slice(0, 1)}</div>
+                        <div className="text-xs font-medium text-[#718096] mb-2">{day.label.slice(0, 1)}</div>
                         <div
-                          className="p-1 rounded text-xs"
+                          className="py-2 px-0.5 rounded-md text-[10px] font-medium transition-all"
                           style={{ backgroundColor: workTypeInfo.bgcolor, color: workTypeInfo.fontcolor }}
                         >
                           {workTypeInfo.name}
@@ -392,14 +443,25 @@ export function MemberFormDialog({ open, onOpenChange, member, onSave }: MemberF
                   })}
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          {/* Footer */}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => onOpenChange(false)}
+              className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb]"
+            >
               취소
             </Button>
-            <Button type="submit">{member ? "수정" : "저장"}</Button>
+            <Button 
+              type="submit"
+              className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white"
+            >
+              {member ? "변경사항 저장" : "구성원 등록"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
