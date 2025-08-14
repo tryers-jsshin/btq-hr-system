@@ -185,8 +185,8 @@ export default function WorkScheduleManage() {
                   workTypeName = workType.name
                   startTime = workType.start_time
                   endTime = workType.end_time
-                  // 동적 색상 적용
-                  workTypeColor = `${workType.bgcolor} ${workType.fontcolor}`
+                  // 등록한 배경색과 글자색 적용
+                  workTypeColor = `${workType.bgcolor || '#f3f4f6'} ${workType.fontcolor || '#4a5568'}`
                 }
 
                 return {
@@ -672,15 +672,8 @@ export default function WorkScheduleManage() {
                                           color: dailySchedule.workTypeColor.includes("#")
                                             ? dailySchedule.workTypeColor.split(" ")[1]
                                             : undefined,
-                                          border: dailySchedule.workTypeColor.includes("#")
-                                            ? `1px solid ${dailySchedule.workTypeColor.split(" ")[1]}20`
-                                            : undefined,
                                         }}
-                                        className={
-                                          !dailySchedule.workTypeColor.includes("#")
-                                            ? `${dailySchedule.workTypeColor} text-[10px] px-1 py-0 h-4 flex-shrink-0`
-                                            : "text-[10px] px-1 py-0 h-4 flex-shrink-0"
-                                        }
+                                        className="text-[10px] px-1 py-0 h-4 flex-shrink-0"
                                       >
                                         {dailySchedule.workTypeName}
                                         {dailySchedule.isChanged && "*"}

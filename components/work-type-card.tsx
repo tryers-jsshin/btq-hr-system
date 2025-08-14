@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Clock, Edit, Trash2 } from "lucide-react"
+import { Clock, Edit, Trash2, Calendar } from "lucide-react"
 import type { WorkTypeType } from "@/types/work-type"
 
 interface WorkTypeCardProps {
@@ -22,47 +22,58 @@ export function WorkTypeCard({ workType, onEdit, onDelete, isSystemManaged }: Wo
   const isLeaveType = workType.is_leave === true
 
   return (
-    <Card className={`hover:shadow-md transition-shadow ${isLeaveType ? 'border-blue-200 bg-blue-50/30' : ''}`}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Badge style={{ backgroundColor: workType.bgcolor, color: workType.fontcolor }}>{workType.name}</Badge>
-            {isLeaveType && (
-              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
-                휴가 유형
-              </Badge>
-            )}
+    <Card className={`group bg-white border border-[#f3f4f6] rounded-xl shadow-sm hover:shadow-md hover:border-[#5e6ad2]/20 hover:-translate-y-0.5 transition-all duration-200 ${
+      isLeaveType ? 'bg-gradient-to-br from-[#fafbfb] to-white' : ''
+    }`}>
+      <CardContent className="p-5 sm:p-6">
+        {/* 헤더 영역 */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1">
+            <Badge 
+              style={{ 
+                backgroundColor: workType.bgcolor || '#f3f4f6', 
+                color: workType.fontcolor || '#4a5568' 
+              }}
+              className="px-3 py-1.5 text-sm font-semibold rounded-lg shadow-sm"
+            >
+              {workType.name}
+            </Badge>
           </div>
-          <div className="flex space-x-1">
-            <Button variant="ghost" size="sm" onClick={() => onEdit(workType)}>
+          <div className="flex items-center gap-1 transition-opacity duration-200">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => onEdit(workType)}
+              className="h-8 w-8 p-0 text-[#5e6ad2] hover:bg-[#5e6ad2]/10 hover:text-[#4e5ac2] transition-all duration-200 rounded-lg"
+            >
               <Edit className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onDelete(workType)}>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => onDelete(workType)}
+              className="h-8 w-8 p-0 text-[#dc2626] hover:bg-[#dc2626]/10 hover:text-[#dc2626] transition-all duration-200 rounded-lg"
+            >
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
+        </div>
+
+        {/* 정보 영역 */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-[#718096]">
             <Clock className="h-4 w-4" />
-            <span>
-              {isLeaveType ? (
-                // 휴가 유형의 경우 시간이 00:00:00-23:59:59이면 종일로 표시
-                (workType.start_time === "00:00:00" && workType.end_time === "23:59:59") ? 
-                  "종일 휴가" : 
-                  `${formatTime(workType.start_time)} - ${formatTime(workType.end_time)}`
-              ) : (
-                `${formatTime(workType.start_time)} - ${formatTime(workType.end_time)}`
-              )}
+            <span className="text-[#4a5568]">
+              {`${formatTime(workType.start_time)} - ${formatTime(workType.end_time)}`}
             </span>
           </div>
           
+          {/* 연차 차감 정보 */}
           {isLeaveType && workType.deduction_days !== null && workType.deduction_days !== undefined && (
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <span className="font-medium text-blue-600">연차 차감:</span>
-              <span className="font-semibold">
+            <div className="flex items-center gap-2 text-sm">
+              <Calendar className="h-4 w-4 text-[#2563eb]" />
+              <span className="text-[#718096]">연차 차감:</span>
+              <span className="font-semibold text-[#0a0b0c]">
                 {workType.deduction_days}일
               </span>
             </div>

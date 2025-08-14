@@ -20,6 +20,11 @@ import {
   CheckCircle,
   ClipboardList,
   Coins,
+  Building2,
+  PlaneTakeoff,
+  CheckSquare,
+  BarChart3,
+  Settings2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -38,12 +43,12 @@ const menuItems = [
     title: "대시보드",
     href: "/",
     icon: LayoutDashboard,
-    roles: ["관리자", "일반직원"], // 모든 사용자 접근 가능
+    roles: ["관리자", "일반직원"],
   },
   {
-    title: "구성원 관리",
+    title: "인사 관리",
     icon: Users,
-    roles: ["관리자"], // 관리자만 접근 가능
+    roles: ["관리자"],
     children: [
       {
         title: "활성 구성원",
@@ -57,72 +62,99 @@ const menuItems = [
         icon: UserX,
         roles: ["관리자"],
       },
+      {
+        title: "팀 관리",
+        href: "/teams",
+        icon: Building2,
+        roles: ["관리자"],
+      },
     ],
   },
   {
-    title: "팀 관리",
-    href: "/teams",
-    icon: UsersRound,
-    roles: ["관리자"], // 관리자만 접근 가능
-  },
-  {
-    title: "근무표",
-    href: "/work-schedule",
+    title: "근무 관리",
     icon: CalendarDays,
-    roles: ["관리자", "일반직원"], // 모든 사용자 접근 가능
-  },
-  {
-    title: "연차 신청",
-    href: "/leave-request",
-    icon: FileText,
-    roles: ["관리자", "일반직원"], // 모든 사용자 접근 가능
-  },
-  {
-    title: "연차 승인",
-    href: "/leave-approval",
-    icon: CheckCircle,
-    roles: ["관리자"], // 관리자만 접근 가능
-  },
-  {
-    title: "나의 근태 관리",
-    href: "/attendance/my",
-    icon: ClipboardList,
-    roles: ["관리자", "일반직원"], // 모든 사용자 접근 가능
-  },
-  {
-    title: "구성원 근태 관리",
-    href: "/attendance/all",
-    icon: ClipboardList,
-    roles: ["관리자"], // 관리자만 접근 가능
-  },
-  {
-    title: "근무 마일리지",
-    href: "/mileage/manage",
-    icon: Coins,
-    roles: ["관리자"], // 관리자만 접근 가능
-  },
-  {
-    title: "기본 설정",
-    icon: Settings,
-    roles: ["관리자", "일반직원"], // 설정 메뉴 자체는 접근 가능 (하위 메뉴에서 권한 제어)
+    roles: ["관리자", "일반직원"],
     children: [
+      {
+        title: "근무표 조회",
+        href: "/work-schedule",
+        icon: Calendar,
+        roles: ["관리자", "일반직원"],
+      },
+      {
+        title: "근무표 관리",
+        href: "/work-schedule/manage",
+        icon: Settings2,
+        roles: ["관리자"],
+      },
       {
         title: "근무 유형",
         href: "/settings/work-types",
         icon: Clock,
-        roles: ["관리자"], // 관리자만 접근 가능
+        roles: ["관리자"],
       },
       {
-        title: "연차 관리",
-        href: "/settings/annual-leave",
-        icon: Calendar,
-        roles: ["관리자"], // 관리자만 접근 가능
+        title: "근무 마일리지",
+        href: "/mileage/manage",
+        icon: Coins,
+        roles: ["관리자"],
       },
+    ],
+  },
+  {
+    title: "연차 관리",
+    icon: PlaneTakeoff,
+    roles: ["관리자", "일반직원"],
+    children: [
+      {
+        title: "연차 신청",
+        href: "/leave-request",
+        icon: FileText,
+        roles: ["관리자", "일반직원"],
+      },
+      {
+        title: "연차 승인",
+        href: "/leave-approval",
+        icon: CheckSquare,
+        roles: ["관리자"],
+      },
+      {
+        title: "연차 설정",
+        href: "/settings/annual-leave",
+        icon: Settings2,
+        roles: ["관리자"],
+      },
+    ],
+  },
+  {
+    title: "근태 관리",
+    icon: ClipboardList,
+    roles: ["관리자", "일반직원"],
+    children: [
+      {
+        title: "나의 근태",
+        href: "/attendance/my",
+        icon: ClipboardList,
+        roles: ["관리자", "일반직원"],
+      },
+      {
+        title: "전체 근태",
+        href: "/attendance/all",
+        icon: BarChart3,
+        roles: ["관리자"],
+      },
+    ],
+  },
+  {
+    title: "설정",
+    icon: Settings,
+    roles: ["관리자", "일반직원"],
+    children: [
       {
         title: "비밀번호 변경",
         href: "/settings/password",
         icon: KeyRound,
-        roles: ["관리자", "일반직원"], // 모든 사용자 접근 가능
+        roles: ["관리자", "일반직원"],
       },
     ],
   },
@@ -132,8 +164,13 @@ export function MobileNav() {
   const pathname = usePathname()
   const router = useRouter()
   const { toast } = useToast()
-  const [openSettings, setOpenSettings] = useState(pathname.startsWith("/settings"))
-  const [openMembers, setOpenMembers] = useState(pathname.startsWith("/members"))
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
+    "인사 관리": pathname.startsWith("/members") || pathname.startsWith("/teams"),
+    "근무 관리": pathname.startsWith("/work-schedule") || pathname.startsWith("/settings/work-types") || pathname.startsWith("/mileage"),
+    "연차 관리": pathname.startsWith("/leave-") || pathname.startsWith("/settings/annual-leave"),
+    "근태 관리": pathname.startsWith("/attendance"),
+    "설정": pathname.startsWith("/settings/password"),
+  })
   const [open, setOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState<Member | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -187,7 +224,7 @@ export function MobileNav() {
   if (isLoading) {
     return (
       <div className="flex h-16 items-center justify-between px-4 border-b border-[#f3f4f6] bg-white">
-        <h1 className="text-lg font-bold text-[#0a0b0c]">HR 시스템</h1>
+        <h1 className="text-lg font-bold text-[#5e6ad2]">HR 시스템</h1>
         <div className="text-[#718096]">로딩 중...</div>
       </div>
     )
@@ -199,7 +236,7 @@ export function MobileNav() {
 
   return (
     <div className="flex h-16 items-center justify-between px-4 border-b border-[#f3f4f6] bg-white shadow-sm">
-      <h1 className="text-lg font-bold text-[#0a0b0c]">HR 시스템</h1>
+      <h1 className="text-lg font-bold text-[#5e6ad2]">HR 시스템</h1>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
@@ -215,7 +252,7 @@ export function MobileNav() {
           <div className="flex h-full flex-col">
             {/* Header */}
             <div className="flex h-16 items-center px-6 border-b border-[#f3f4f6] bg-white">
-              <h1 className="text-xl font-bold text-[#0a0b0c]">HR 시스템</h1>
+              <h1 className="text-xl font-bold text-[#5e6ad2]">HR 시스템</h1>
             </div>
 
             {/* Navigation */}
@@ -235,12 +272,14 @@ export function MobileNav() {
                     return null
                   }
 
-                  // 구성원 관리 메뉴인지 확인
-                  const isOpen = item.title === "구성원 관리" ? openMembers : openSettings
-                  const setOpen = item.title === "구성원 관리" ? setOpenMembers : setOpenSettings
+                  // 메뉴 열림/닫힘 상태 관리
+                  const isOpen = openMenus[item.title] || false
+                  const setMenuOpen = (open: boolean) => {
+                    setOpenMenus(prev => ({ ...prev, [item.title]: open }))
+                  }
 
                   return (
-                    <Collapsible key={item.title} open={isOpen} onOpenChange={setOpen}>
+                    <Collapsible key={item.title} open={isOpen} onOpenChange={setMenuOpen}>
                       <CollapsibleTrigger asChild>
                         <Button
                           variant="ghost"
@@ -284,8 +323,7 @@ export function MobileNav() {
                       variant="ghost"
                       className={cn(
                         "w-full justify-start px-3 py-2 text-left font-normal rounded-lg transition-colors duration-100",
-                        pathname === item.href ||
-                          (item.href === "/work-schedule" && pathname.startsWith("/work-schedule"))
+                        pathname === item.href
                           ? "bg-[#5e6ad2]/10 text-[#5e6ad2] font-medium"
                           : "text-[#4a5568] hover:bg-[#fafbfb] hover:text-[#0a0b0c]",
                       )}

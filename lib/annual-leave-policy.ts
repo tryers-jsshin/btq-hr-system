@@ -39,7 +39,103 @@ export class AnnualLeavePolicyEngine {
     return calculations
   }
 
-  // 개별 구성원의 연차 계산
+  // 개별 구성원의 연차 계산 (최적화 버전 - 트랜잭션 미리 전달)
+  async calculateMemberAnnualLeaveOptimized(
+    member: Member, 
+    targetDate: Date, 
+    transactions: AnnualLeaveTransaction[]
+  ): Promise<AnnualLeaveCalculation> {
+    // 정책 초기화 확인 (중요!)
+    if (!this.policy) await this.initialize()
+    if (!this.policy) throw new Error("연차 정책을 불러올 수 없습니다.")
+    
+    console.log(`=== ${member.name} 연차 계산 시작 (최적화) ===`)
+    console.log(`입사일: ${member.join_date}`)
+    console.log(`기준일: ${targetDate.toISOString().split("T")[0]}`)
+    console.log(`전달받은 트랜잭션: ${transactions.length}개`)
+
+    const joinDate = new Date(member.join_date)
+    const yearsOfService = this.calculateYearsOfService(joinDate, targetDate)
+
+    const oneYearLater = new Date(joinDate)
+    oneYearLater.setFullYear(oneYearLater.getFullYear() + 1)
+    const currentPhase = targetDate < oneYearLater ? "first_year" : "annual_grant"
+
+    console.log(`근속년수: ${yearsOfService.toFixed(2)}년`)
+    console.log(`입사 1년 기준일: ${oneYearLater.toISOString().split("T")[0]}`)
+    console.log(`현재 단계: ${currentPhase}`)
+    
+    // 디버깅: manual_grant 확인
+    const manualGrants = transactions.filter(t => t.transaction_type === "manual_grant")
+    console.log(`  - manual_grant: ${manualGrants.length}건`)
+    manualGrants.forEach(g => {
+      console.log(`    * expire_date: ${g.expire_date}, is_expired: ${g.is_expired}, status: ${g.status}`)
+    })
+
+    let shouldGrantToday = 0
+    let shouldExpireToday = 0
+    let nextGrantDate: string | undefined
+    let nextExpireDate: string | undefined
+
+    if (currentPhase === "first_year") {
+      console.log("→ 첫 해 월별 부여 계산 중...")
+      const monthlyGrantResult = this.calculateMonthlyGrantWithBackfill(joinDate, targetDate, transactions)
+      shouldGrantToday = monthlyGrantResult.shouldGrantToday
+      nextGrantDate = monthlyGrantResult.nextGrantDate
+      
+      console.log(`오늘 부여할 연차: ${shouldGrantToday}일`)
+      console.log(`다음 부여일: ${nextGrantDate || "없음"}`)
+    } else {
+      console.log("→ 연간 부여 계산 중...")
+      const annualGrantResult = this.calculateAnnualGrantWithBackfill(
+        joinDate,
+        targetDate,
+        yearsOfService,
+        transactions,
+      )
+      shouldGrantToday = annualGrantResult.shouldGrantToday
+      nextGrantDate = annualGrantResult.nextGrantDate
+      
+      console.log(`오늘 부여할 연차: ${shouldGrantToday}일`)
+      console.log(`다음 부여일: ${nextGrantDate || "없음"}`)
+    }
+
+    // 소멸 계산 (모든 단계에서 실행 - manual_grant도 소멸되어야 함)
+    const expirationResult = this.calculateExpiration(targetDate, transactions)
+    shouldExpireToday = expirationResult.shouldExpireToday
+    nextExpireDate = expirationResult.nextExpireDate
+    
+    console.log(`오늘 소멸할 연차: ${shouldExpireToday}일`)
+    console.log(`다음 소멸일: ${nextExpireDate || "없음"}`)
+
+    // 입사 1주년 당일(자정)에 첫 해 연차 소멸 처리 (단계와 무관하게)
+    if (this.isSameDate(targetDate, oneYearLater)) {
+      const expiredAmount = this.calculateFirstYearExpiration(transactions)
+      if (expiredAmount > 0) {
+        shouldExpireToday += expiredAmount
+        console.log(`★ 입사 1주년 당일(자정) - 첫 해 연차 소멸: ${expiredAmount}일`)
+      }
+    }
+
+    console.log(`=== ${member.name} 연차 계산 완료 (최적화) ===`)
+    console.log()
+
+    return {
+      member_id: member.id,
+      member_name: member.name,
+      join_date: member.join_date,
+      years_of_service: yearsOfService,
+      current_phase: currentPhase,
+      should_grant_today: shouldGrantToday,
+      should_expire_today: shouldExpireToday,
+      next_grant_date: nextGrantDate,
+      next_expire_date: nextExpireDate,
+      monthly_grants_received: this.countMonthlyGrants(transactions),
+      annual_grants_received: this.countAnnualGrants(transactions),
+    }
+  }
+
+  // 개별 구성원의 연차 계산 (기존 버전)
   private async calculateMemberAnnualLeave(member: Member, targetDate: Date): Promise<AnnualLeaveCalculation> {
     console.log(`=== ${member.name} 연차 계산 시작 ===`)
     console.log(`입사일: ${member.join_date}`)
@@ -193,85 +289,85 @@ export class AnnualLeavePolicyEngine {
   }
 
   // 현재까지 받았어야 할 연간 부여 횟수 계산
-  private calculateShouldHaveReceivedAnnualGrants(joinDate: Date, targetDate: Date): number {
-    let count = 0
-    const currentYear = targetDate.getFullYear()
+  // private calculateShouldHaveReceivedAnnualGrants(joinDate: Date, targetDate: Date): number {
+  //   let count = 0
+  //   const currentYear = targetDate.getFullYear()
 
-    // 입사 1년 후부터 매년 기념일 확인
-    for (let year = joinDate.getFullYear() + 1; year <= currentYear; year++) {
-      const anniversaryDate = new Date(joinDate)
-      anniversaryDate.setFullYear(year)
+  //   // 입사 1년 후부터 매년 기념일 확인
+  //   for (let year = joinDate.getFullYear() + 1; year <= currentYear; year++) {
+  //     const anniversaryDate = new Date(joinDate)
+  //     anniversaryDate.setFullYear(year)
 
-      if (anniversaryDate <= targetDate) {
-        count++
-      }
-    }
+  //     if (anniversaryDate <= targetDate) {
+  //       count++
+  //     }
+  //   }
 
-    console.log(`  연간 부여 횟수 계산: ${joinDate.getFullYear() + 1}년부터 ${currentYear}년까지 = ${count}회`)
-    return count
-  }
+  //   console.log(`  연간 부여 횟수 계산: ${joinDate.getFullYear() + 1}년부터 ${currentYear}년까지 = ${count}회`)
+  //   return count
+  // }
 
   // 현재 유효한 연간 부여 계산 (소멸된 연차 제외) - 사용하지 않음
-  private calculateCurrentValidAnnualGrant(
-    joinDate: Date,
-    targetDate: Date,
-    yearsOfService: number,
-    transactions: AnnualLeaveTransaction[],
-  ): { shouldGrantToday: number; nextGrantDate?: string } {
-    if (!this.policy) return { shouldGrantToday: 0 }
+  // private calculateCurrentValidAnnualGrant(
+  //   joinDate: Date,
+  //   targetDate: Date,
+  //   yearsOfService: number,
+  //   transactions: AnnualLeaveTransaction[],
+  // ): { shouldGrantToday: number; nextGrantDate?: string } {
+  //   if (!this.policy) return { shouldGrantToday: 0 }
 
-    console.log(
-      `  현재 유효한 연간 부여 계산: 입사일 ${joinDate.toISOString().split("T")[0]}, 기준일 ${targetDate.toISOString().split("T")[0]}`,
-    )
+  //   console.log(
+  //     `  현재 유효한 연간 부여 계산: 입사일 ${joinDate.toISOString().split("T")[0]}, 기준일 ${targetDate.toISOString().split("T")[0]}`,
+  //   )
 
-    // 현재 연차 구간 파악 (가장 최근 기념일 기준)
-    const currentAnniversaryYear = this.getCurrentAnniversaryYear(joinDate, targetDate)
-    const currentAnniversaryDate = new Date(joinDate)
-    currentAnniversaryDate.setFullYear(currentAnniversaryYear)
+  //   // 현재 연차 구간 파악 (가장 최근 기념일 기준)
+  //   const currentAnniversaryYear = this.getCurrentAnniversaryYear(joinDate, targetDate)
+  //   const currentAnniversaryDate = new Date(joinDate)
+  //   currentAnniversaryDate.setFullYear(currentAnniversaryYear)
 
-    console.log(
-      `  현재 연차 구간: ${currentAnniversaryYear}년 (${currentAnniversaryDate.toISOString().split("T")[0]} 기준)`,
-    )
+  //   console.log(
+  //     `  현재 연차 구간: ${currentAnniversaryYear}년 (${currentAnniversaryDate.toISOString().split("T")[0]} 기준)`,
+  //   )
 
-    // 현재 구간의 연차가 이미 부여되었는지 확인 (취소된 것 제외)
-    const hasCurrentYearGrant = transactions.some(
-      (t) =>
-        t.transaction_type === "grant" &&
-        t.status !== "cancelled" &&
-        t.grant_date &&
-        new Date(t.grant_date).getFullYear() === currentAnniversaryYear &&
-        t.reason.includes("연간 부여"),
-    )
+  //   // 현재 구간의 연차가 이미 부여되었는지 확인 (취소된 것 제외)
+  //   const hasCurrentYearGrant = transactions.some(
+  //     (t) =>
+  //       t.transaction_type === "grant" &&
+  //       t.status !== "cancelled" &&
+  //       t.grant_date &&
+  //       new Date(t.grant_date).getFullYear() === currentAnniversaryYear &&
+  //       t.reason.includes("연간 부여"),
+  //   )
 
-    console.log(`  현재 구간 연차 부여 여부: ${hasCurrentYearGrant ? "이미 부여됨" : "미부여"}`)
+  //   console.log(`  현재 구간 연차 부여 여부: ${hasCurrentYearGrant ? "이미 부여됨" : "미부여"}`)
 
-    if (hasCurrentYearGrant) {
-      // 이미 부여된 경우, 다음 기념일 계산
-      const nextAnniversary = new Date(joinDate)
-      nextAnniversary.setFullYear(currentAnniversaryYear + 1)
+  //   if (hasCurrentYearGrant) {
+  //     // 이미 부여된 경우, 다음 기념일 계산
+  //     const nextAnniversary = new Date(joinDate)
+  //     nextAnniversary.setFullYear(currentAnniversaryYear + 1)
 
-      return {
-        shouldGrantToday: 0,
-        nextGrantDate: nextAnniversary.toISOString().split("T")[0],
-      }
-    }
+  //     return {
+  //       shouldGrantToday: 0,
+  //       nextGrantDate: nextAnniversary.toISOString().split("T")[0],
+  //     }
+  //   }
 
-    // 현재 구간의 연차 일수 계산
-    const serviceYearsForCurrentGrant = currentAnniversaryYear - joinDate.getFullYear()
-    const annualDays = this.calculateAnnualDays(serviceYearsForCurrentGrant)
+  //   // 현재 구간의 연차 일수 계산
+  //   const serviceYearsForCurrentGrant = currentAnniversaryYear - joinDate.getFullYear()
+  //   const annualDays = this.calculateAnnualDays(serviceYearsForCurrentGrant)
 
-    console.log(`  현재 구간 근속년수: ${serviceYearsForCurrentGrant}년`)
-    console.log(`  부여할 연차 일수: ${annualDays}일`)
+  //   console.log(`  현재 구간 근속년수: ${serviceYearsForCurrentGrant}년`)
+  //   console.log(`  부여할 연차 일수: ${annualDays}일`)
 
-    // 다음 기념일 계산
-    const nextAnniversary = new Date(joinDate)
-    nextAnniversary.setFullYear(currentAnniversaryYear + 1)
+  //   // 다음 기념일 계산
+  //   const nextAnniversary = new Date(joinDate)
+  //   nextAnniversary.setFullYear(currentAnniversaryYear + 1)
 
-    return {
-      shouldGrantToday: annualDays,
-      nextGrantDate: nextAnniversary.toISOString().split("T")[0],
-    }
-  }
+  //   return {
+  //     shouldGrantToday: annualDays,
+  //     nextGrantDate: nextAnniversary.toISOString().split("T")[0],
+  //   }
+  // }
 
   // 현재 연차 구간의 기념일 연도 계산
   private getCurrentAnniversaryYear(joinDate: Date, targetDate: Date): number {
@@ -481,52 +577,52 @@ export class AnnualLeavePolicyEngine {
   }
 
   // 연간 부여 계산 (기존 로직)
-  private calculateAnnualGrant(
-    joinDate: Date,
-    targetDate: Date,
-    yearsOfService: number,
-    transactions: AnnualLeaveTransaction[],
-  ): { shouldGrantToday: number; nextGrantDate?: string } {
-    if (!this.policy) return { shouldGrantToday: 0 }
+  // private calculateAnnualGrant(
+  //   joinDate: Date,
+  //   targetDate: Date,
+  //   yearsOfService: number,
+  //   transactions: AnnualLeaveTransaction[],
+  // ): { shouldGrantToday: number; nextGrantDate?: string } {
+  //   if (!this.policy) return { shouldGrantToday: 0 }
 
-    // 입사 기념일인지 확인
-    const anniversaryDate = new Date(joinDate)
-    anniversaryDate.setFullYear(targetDate.getFullYear())
+  //   // 입사 기념일인지 확인
+  //   const anniversaryDate = new Date(joinDate)
+  //   anniversaryDate.setFullYear(targetDate.getFullYear())
 
-    if (!this.isSameDate(targetDate, anniversaryDate)) {
-      // 다음 기념일 계산
-      if (targetDate > anniversaryDate) {
-        anniversaryDate.setFullYear(anniversaryDate.getFullYear() + 1)
-      }
-      return {
-        shouldGrantToday: 0,
-        nextGrantDate: anniversaryDate.toISOString().split("T")[0],
-      }
-    }
+  //   if (!this.isSameDate(targetDate, anniversaryDate)) {
+  //     // 다음 기념일 계산
+  //     if (targetDate > anniversaryDate) {
+  //       anniversaryDate.setFullYear(anniversaryDate.getFullYear() + 1)
+  //     }
+  //     return {
+  //       shouldGrantToday: 0,
+  //       nextGrantDate: anniversaryDate.toISOString().split("T")[0],
+  //     }
+  //   }
 
-    // 해당 연도에 이미 부여했는지 확인
-    const currentYear = targetDate.getFullYear()
-    const hasGrantedThisYear = transactions.some(
-      (t) => t.transaction_type === "grant" && t.grant_date && new Date(t.grant_date).getFullYear() === currentYear,
-    )
+  //   // 해당 연도에 이미 부여했는지 확인
+  //   const currentYear = targetDate.getFullYear()
+  //   const hasGrantedThisYear = transactions.some(
+  //     (t) => t.transaction_type === "grant" && t.grant_date && new Date(t.grant_date).getFullYear() === currentYear,
+  //   )
 
-    if (hasGrantedThisYear) {
-      anniversaryDate.setFullYear(anniversaryDate.getFullYear() + 1)
-      return {
-        shouldGrantToday: 0,
-        nextGrantDate: anniversaryDate.toISOString().split("T")[0],
-      }
-    }
+  //   if (hasGrantedThisYear) {
+  //     anniversaryDate.setFullYear(anniversaryDate.getFullYear() + 1)
+  //     return {
+  //       shouldGrantToday: 0,
+  //       nextGrantDate: anniversaryDate.toISOString().split("T")[0],
+  //     }
+  //   }
 
-    // 부여할 연차 일수 계산
-    const annualDays = this.calculateAnnualDays(yearsOfService)
-    anniversaryDate.setFullYear(anniversaryDate.getFullYear() + 1)
+  //   // 부여할 연차 일수 계산
+  //   const annualDays = this.calculateAnnualDays(yearsOfService)
+  //   anniversaryDate.setFullYear(anniversaryDate.getFullYear() + 1)
 
-    return {
-      shouldGrantToday: annualDays,
-      nextGrantDate: anniversaryDate.toISOString().split("T")[0],
-    }
-  }
+  //   return {
+  //     shouldGrantToday: annualDays,
+  //     nextGrantDate: anniversaryDate.toISOString().split("T")[0],
+  //   }
+  // }
 
   // 소멸 계산 (과거 소멸일 포함)
   private calculateExpiration(
@@ -542,7 +638,7 @@ export class AnnualLeavePolicyEngine {
       (t) => {
         const isGrantType = t.transaction_type === "grant" || t.transaction_type === "manual_grant"
         const hasExpireDate = !!t.expire_date
-        const isExpired = hasExpireDate && new Date(t.expire_date) <= targetDate
+        const isExpired = hasExpireDate && t.expire_date && new Date(t.expire_date) <= targetDate
         
         if (t.transaction_type === "manual_grant") {
           console.log(`    manual_grant 체크: expire_date=${t.expire_date}, isExpired=${isExpired}`)
@@ -760,16 +856,16 @@ export class AnnualLeavePolicyEngine {
 
   // 연차 소멸 실행 (더 이상 사용하지 않음 - is_expired 필드로 관리)
   // @deprecated expire 트랜잭션 대신 is_expired 필드 사용
-  async expireAnnualLeave(
-    memberId: string,
-    memberName: string,
-    amount: number,
-    reason: string,
-    grantDate: string,
-    createdBy: string,
-  ): Promise<void> {
-    console.log(`[DEPRECATED] 이 함수는 더 이상 사용되지 않습니다. is_expired 필드를 사용하세요.`)
-  }
+  // async expireAnnualLeave(
+  //   memberId: string,
+  //   memberName: string,
+  //   amount: number,
+  //   reason: string,
+  //   grantDate: string,
+  //   createdBy: string,
+  // ): Promise<void> {
+  //   console.log(`[DEPRECATED] 이 함수는 더 이상 사용되지 않습니다. is_expired 필드를 사용하세요.`)
+  // }
 
   // 구성원 잔액 업데이트 (V2 사용)
   private async updateMemberBalance(memberId: string): Promise<void> {
@@ -947,8 +1043,11 @@ export class AnnualLeavePolicyEngine {
   }
 }
 
-// 자동 업데이트 함수 - 과거 날짜 소급 적용 지원
-export async function runDailyAnnualLeaveUpdate(targetDate: Date = new Date()): Promise<{
+// 자동 업데이트 함수 - 과거 날짜 소급 적용 지원 (최적화 버전)
+export async function runDailyAnnualLeaveUpdate(
+  targetDate: Date = new Date(),
+  onProgress?: (current: number, total: number, memberName: string) => void
+): Promise<{
   processed: number
   granted: number
   expired: number
@@ -963,75 +1062,148 @@ export async function runDailyAnnualLeaveUpdate(targetDate: Date = new Date()): 
   }
 
   try {
-    const calculations = await engine.calculateAnnualLeaveForDate(targetDate)
-
-    for (const calc of calculations) {
-      try {
-        results.processed++
-
-        // 부여 처리 (과거 누락분 포함)
-        if (calc.should_grant_today > 0) {
-          if (calc.current_phase === "first_year") {
-            // 월별 부여: 각 개월차별로 개별 부여 (과거 부여일로 소급)
-            const member = await supabase.from("members").select("join_date").eq("id", calc.member_id).single()
-            if (member.data) {
-              const joinDate = new Date(member.data.join_date)
-              // 모든 트랜잭션 조회 (cancelled 포함) - 중복 부여 방지를 위해
-              const transactions = await supabaseAnnualLeaveStorageV2.getAllTransactionsByMemberId(calc.member_id)
+    // 엔진 초기화 (정책 로드)
+    await engine.initialize()
+    
+    console.log("[최적화] 연차 업데이트 시작")
+    const startTime = Date.now()
+    
+    // 1. 모든 활성 구성원 조회
+    const members = await supabaseAnnualLeaveStorage.getActiveMembersForLeaveCalculation()
+    console.log(`[최적화] ${members.length}명의 구성원 처리 예정`)
+    
+    if (members.length === 0) {
+      return results
+    }
+    
+    // 2. 모든 구성원의 트랜잭션을 한 번에 조회 (배치 조회)
+    const memberIds = members.map(m => m.id)
+    const transactionMap = await supabaseAnnualLeaveStorageV2.getBatchTransactions(memberIds)
+    console.log(`[최적화] 배치 조회 완료 - ${transactionMap.size}명의 트랜잭션 로드`)
+    
+    // 3. 잔액 업데이트를 위한 배치 데이터 준비
+    const balanceUpdates: Array<{
+      member_id: string
+      member_name: string
+      team_name: string
+      join_date: string
+      total_granted: number
+      total_used: number
+      total_expired: number
+      current_balance: number
+    }> = []
+    
+    // 4. 청크 단위로 처리 (메모리 관리)
+    const CHUNK_SIZE = 10
+    const chunks = []
+    for (let i = 0; i < members.length; i += CHUNK_SIZE) {
+      chunks.push(members.slice(i, i + CHUNK_SIZE))
+    }
+    
+    console.log(`[최적화] ${chunks.length}개 청크로 나누어 처리`)
+    
+    // 5. 각 청크를 순차 처리 (청크 내부는 병렬)
+    let processedCount = 0
+    
+    for (const [chunkIndex, chunk] of chunks.entries()) {
+      console.log(`[최적화] 청크 ${chunkIndex + 1}/${chunks.length} 처리 중...`)
+      
+      // 청크 내 구성원들을 병렬 처리
+      const chunkPromises = chunk.map(async (member) => {
+        try {
+          // 진행 상황 콜백
+          if (onProgress) {
+            onProgress(processedCount + 1, members.length, member.name)
+          }
+          
+          // 해당 구성원의 트랜잭션 가져오기
+          const transactions = transactionMap.get(member.id) || []
+          
+          // 연차 계산 (기존 로직 사용)
+          const calc = await engine.calculateMemberAnnualLeaveOptimized(
+            member,
+            targetDate,
+            transactions
+          )
+          
+          // 부여 처리 (과거 누락분 포함)
+          if (calc.should_grant_today > 0) {
+            if (calc.current_phase === "first_year") {
+              const joinDate = new Date(member.join_date)
               const missedGrants = engine.calculateMissedMonthlyGrants(joinDate, targetDate, transactions)
-
-              // 각 누락된 개월차별로 실제 부여일로 소급 부여
+              
               for (const grantInfo of missedGrants) {
                 await engine.grantAnnualLeave(
                   calc.member_id,
                   calc.member_name,
                   grantInfo.amount,
                   grantInfo.reason,
-                  grantInfo.grantDate, // 실제 부여일로 소급 적용
-                  "SYSTEM",
+                  grantInfo.grantDate,
+                  "SYSTEM"
                 )
                 results.granted += grantInfo.amount
               }
-            }
-          } else {
-            // 연간 부여: 각 누락된 기념일별로 개별 부여 (과거 기념일로 소급)
-            const member = await supabase.from("members").select("join_date").eq("id", calc.member_id).single()
-            if (member.data) {
-              const joinDate = new Date(member.data.join_date)
-              // 모든 트랜잭션 조회 (cancelled 포함) - 중복 부여 방지를 위해
-              const transactions = await supabaseAnnualLeaveStorageV2.getAllTransactionsByMemberId(calc.member_id)
+            } else {
+              const joinDate = new Date(member.join_date)
               const missedGrants = engine.calculateMissedAnnualGrants(joinDate, targetDate, transactions)
-
-              // 각 누락된 기념일별로 실제 기념일로 소급 부여
+              
               for (const grantInfo of missedGrants) {
-                const anniversaryDate = new Date(joinDate)
-                anniversaryDate.setFullYear(joinDate.getFullYear() + grantInfo.serviceYears)
-
                 await engine.grantAnnualLeave(
                   calc.member_id,
                   calc.member_name,
                   grantInfo.amount,
                   grantInfo.reason,
-                  grantInfo.anniversaryDate, // 실제 기념일로 소급 적용
-                  "SYSTEM",
+                  grantInfo.anniversaryDate,
+                  "SYSTEM"
                 )
                 results.granted += grantInfo.amount
               }
             }
           }
+          
+          // 소멸 처리 (순차 처리 유지 - reference_id 재연결 보장)
+          if (calc.should_expire_today > 0) {
+            await engine.processExpiredLeaves(calc.member_id, calc.member_name, targetDate)
+            results.expired += calc.should_expire_today
+          }
+          
+          // 잔액 계산 (배치 업데이트용)
+          const { totalGranted, totalUsed, totalExpired, currentBalance } = 
+            await supabaseAnnualLeaveStorageV2.calculateBalance(member.id)
+          
+          balanceUpdates.push({
+            member_id: member.id,
+            member_name: member.name,
+            team_name: member.team_name || "",
+            join_date: member.join_date,
+            total_granted: totalGranted,
+            total_used: totalUsed,
+            total_expired: totalExpired,
+            current_balance: currentBalance,
+          })
+          
+          results.processed++
+          processedCount++
+        } catch (error) {
+          console.error(`구성원 ${member.name} 처리 중 오류:`, error)
+          results.errors.push(`${member.name}: ${error instanceof Error ? error.message : "알 수 없는 오류"}`)
+          processedCount++
         }
-
-        // 소멸 처리 (과거 소멸일 포함)
-        if (calc.should_expire_today > 0) {
-          // 과거 소멸 예정이었던 연차들을 모두 처리
-          await engine.processExpiredLeaves(calc.member_id, calc.member_name, targetDate)
-          results.expired += calc.should_expire_today
-        }
-      } catch (error) {
-        console.error(`구성원 ${calc.member_name} 처리 중 오류:`, error)
-        results.errors.push(`${calc.member_name}: ${error instanceof Error ? error.message : "알 수 없는 오류"}`)
-      }
+      })
+      
+      // 청크 내 모든 작업 완료 대기
+      await Promise.all(chunkPromises)
     }
+    
+    // 6. 모든 잔액을 배치로 업데이트
+    if (balanceUpdates.length > 0) {
+      console.log(`[최적화] ${balanceUpdates.length}명의 잔액 배치 업데이트 시작`)
+      await supabaseAnnualLeaveStorageV2.updateBatchBalances(balanceUpdates)
+    }
+    
+    const elapsedTime = Date.now() - startTime
+    console.log(`[최적화] 연차 업데이트 완료 - ${elapsedTime}ms 소요`)
+    
   } catch (error) {
     console.error("일일 연차 업데이트 실행 중 오류:", error)
     results.errors.push(`전체 처리 오류: ${error instanceof Error ? error.message : "알 수 없는 오류"}`)

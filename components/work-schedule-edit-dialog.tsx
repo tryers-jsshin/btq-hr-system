@@ -56,41 +56,28 @@ export function WorkScheduleEditDialog({ open, onOpenChange, member, workTypes, 
   const getWorkTypeInfo = (workTypeId: string) => {
     const workType = workTypes.find((wt) => wt.id === workTypeId)
     if (!workType) {
-      return { name: "미정", time: "-", color: "bg-gray-200 text-gray-600" }
+      return { name: "미정", time: "-", bgcolor: "#f3f4f6", fontcolor: "#4a5568" }
     }
 
-    // 연차 유형 색상 처리
-    if (workType.name === "연차") {
-      return {
-        name: workType.name,
-        time: "연차",
-        color: "bg-yellow-100 text-yellow-800"
+    // 휴가 유형인 경우 시간 표시 처리
+    const isLeaveType = workType.is_leave === true
+    let timeDisplay = "-"
+    
+    if (isLeaveType) {
+      if (workType.start_time === "00:00:00" && workType.end_time === "23:59:59") {
+        timeDisplay = "종일 휴가"
+      } else {
+        timeDisplay = `${workType.start_time.slice(0, 5)}-${workType.end_time.slice(0, 5)}`
       }
-    } else if (workType.name === "오전반차") {
-      return {
-        name: workType.name,
-        time: "오전반차",
-        color: "bg-purple-100 text-purple-800"
-      }
-    } else if (workType.name === "오후반차") {
-      return {
-        name: workType.name,
-        time: "오후반차",
-        color: "bg-indigo-100 text-indigo-800"
-      }
-    }
-
-    let color = "bg-blue-100 text-blue-800"
-    if (workType.name.includes("오픈")) {
-      color = "bg-green-100 text-green-800"
-    } else if (workType.name.includes("마감")) {
-      color = "bg-purple-100 text-purple-800"
+    } else {
+      timeDisplay = `${workType.start_time.slice(0, 5)}-${workType.end_time.slice(0, 5)}`
     }
 
     return {
       name: workType.name,
-      time: `${workType.start_time.slice(0, 5)}-${workType.end_time.slice(0, 5)}`,
-      color,
+      time: timeDisplay,
+      bgcolor: workType.bgcolor || "#f3f4f6",
+      fontcolor: workType.fontcolor || "#4a5568"
     }
   }
 
@@ -123,7 +110,13 @@ export function WorkScheduleEditDialog({ open, onOpenChange, member, workTypes, 
           <div className="p-3 bg-gray-50 rounded-lg">
             <div className="text-sm font-medium text-gray-700 mb-2">현재 근무 형태</div>
             <div className="flex items-center space-x-2">
-              <Badge className={getWorkTypeInfo(member.currentWorkTypeId).color}>
+              <Badge 
+                style={{ 
+                  backgroundColor: getWorkTypeInfo(member.currentWorkTypeId).bgcolor,
+                  color: getWorkTypeInfo(member.currentWorkTypeId).fontcolor
+                }}
+                className="border-0"
+              >
                 {getWorkTypeInfo(member.currentWorkTypeId).name}
               </Badge>
               <span className="text-sm text-gray-600">{getWorkTypeInfo(member.currentWorkTypeId).time}</span>
@@ -168,7 +161,15 @@ export function WorkScheduleEditDialog({ open, onOpenChange, member, workTypes, 
             <div className="p-3 bg-blue-50 rounded-lg">
               <div className="text-sm font-medium text-blue-700 mb-2">변경 후 근무 형태</div>
               <div className="flex items-center space-x-2">
-                <Badge className={selectedWorkType.color}>{selectedWorkType.name}</Badge>
+                <Badge 
+                  style={{ 
+                    backgroundColor: selectedWorkType.bgcolor,
+                    color: selectedWorkType.fontcolor
+                  }}
+                  className="border-0"
+                >
+                  {selectedWorkType.name}
+                </Badge>
                 <span className="text-sm text-blue-600">
                   <Clock className="h-3 w-3 inline mr-1" />
                   {selectedWorkType.time}

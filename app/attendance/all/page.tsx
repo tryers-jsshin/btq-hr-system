@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase"
 import { CsvParser } from "@/lib/csv-parser"
 import { AttendanceUploadDialog } from "@/components/attendance-upload-dialog"
 import { AttendanceModifyDialog } from "@/components/attendance-modify-dialog"
+import { AttendanceRegisterDialog } from "@/components/attendance-register-dialog"
 import { AttendanceDeleteDialog } from "@/components/attendance-delete-dialog"
 import { MileageAdjustDialog } from "@/components/mileage-adjust-dialog"
 import type { AttendanceDetail, AttendanceFilter } from "@/types/attendance"
@@ -35,6 +36,7 @@ export default function AllAttendancePage() {
   const [memberList, setMemberList] = useState<{ id: string, name: string }[]>([])
   const [showUploadDialog, setShowUploadDialog] = useState(false)
   const [showModifyDialog, setShowModifyDialog] = useState(false)
+  const [showRegisterDialog, setShowRegisterDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showMileageDialog, setShowMileageDialog] = useState(false)
   const [selectedRecord, setSelectedRecord] = useState<AttendanceDetail | null>(null)
@@ -328,29 +330,74 @@ export default function AllAttendancePage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-[#f3f4f6]">
-                {filteredRecords.map((record) => {
-                  // 근무일인데 출퇴근 누락 체크
-                  const isWorkDay = 
-                    record.scheduled_start_time && 
-                    record.scheduled_end_time &&
-                    !record.is_leave &&
-                    !record.is_holiday;
+                {(() => {
+                  // 오늘 날짜 체크 - 한 번만 수행
+                  const now = new Date();
+                  const today = new Date();
+                  // 로컬 날짜 문자열 생성 (UTC 변환 없이)
+                  const year = today.getFullYear();
+                  const month = String(today.getMonth() + 1).padStart(2, '0');
+                  const day = String(today.getDate()).padStart(2, '0');
+                  const todayString = `${year}-${month}-${day}`;
+                  
+                  // 오늘 날짜가 리스트에 있는지 확인
+                  const hasTodayInList = filteredRecords.some(record => record.work_date === todayString);
+                  
+                  return filteredRecords.map((record) => {
+                    // 근무일인데 출퇴근 누락 체크
+                    const isWorkDay = 
+                      record.scheduled_start_time && 
+                      record.scheduled_end_time &&
+                      !record.is_leave &&
+                      !record.is_holiday;
                     
-                  const hasMissingAttendance = 
-                    isWorkDay && 
-                    (!record.check_in_time || !record.check_out_time) &&
-                    new Date(record.work_date) < new Date().setHours(0,0,0,0);
+                    const recordDate = new Date(record.work_date + 'T00:00:00');
+                    const isToday = record.work_date === todayString;
+                    
+                    // 과거 날짜의 출퇴근 누락
+                    const todayDate = new Date(todayString + 'T00:00:00');
+                    const hasMissingAttendance = 
+                      isWorkDay && 
+                      (!record.check_in_time || !record.check_out_time) &&
+                      recordDate < todayDate;
+                    
+                    // 오늘 날짜의 출퇴근 체크 - 오늘 날짜가 리스트에 있을 때만
+                    let shouldBeCheckedIn = false;
+                    let shouldBeCheckedOut = false;
+                    
+                    if (hasTodayInList && isToday && isWorkDay) {
+                      // 출근 시간 체크
+                      if (record.scheduled_start_time && !record.check_in_time) {
+                        const [startHour, startMinute] = record.scheduled_start_time.split(':').map(Number);
+                        const scheduledStart = new Date();
+                        scheduledStart.setHours(startHour, startMinute, 0, 0);
+                        // 예정 출근 시간이 지났는데 출근 기록이 없으면
+                        shouldBeCheckedIn = now > scheduledStart;
+                      }
+                      
+                      // 퇴근 시간 체크
+                      if (record.scheduled_end_time && !record.check_out_time) {
+                        const [endHour, endMinute] = record.scheduled_end_time.split(':').map(Number);
+                        const scheduledEnd = new Date();
+                        scheduledEnd.setHours(endHour, endMinute, 0, 0);
+                        // 예정 퇴근 시간이 지났는데 퇴근 기록이 없으면
+                        shouldBeCheckedOut = now > scheduledEnd;
+                      }
+                    }
+                    
+                    // 빨간색 표시 조건: 과거 누락 또는 오늘 현재 시간까지 체크되어야 할 출퇴근 미입력
+                    const showRedBackground = hasMissingAttendance || shouldBeCheckedIn || shouldBeCheckedOut;
 
-                  return (
-                    <tr 
-                      key={record.id} 
-                      className={cn(
-                        "transition-colors duration-100",
-                        hasMissingAttendance 
-                          ? "bg-red-50 hover:bg-red-100" 
-                          : "hover:bg-[#f7f8f9]"
-                      )}
-                    >
+                    return (
+                      <tr 
+                        key={record.id} 
+                        className={cn(
+                          "transition-colors duration-100",
+                          showRedBackground 
+                            ? "bg-red-50 hover:bg-red-100" 
+                            : "hover:bg-[#f7f8f9]"
+                        )}
+                      >
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm text-[#0a0b0c]">
                       {format(new Date(record.work_date), "yy.M.d(E)", { locale: ko })}
                     </td>
@@ -423,8 +470,22 @@ export default function AllAttendancePage() {
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {/* 출퇴근 기록이 없는 경우 등록 버튼 표시 */}
+                        {!record.check_in_time && !record.check_out_time && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedRecord(record)
+                              setShowRegisterDialog(true)
+                            }}
+                            className="h-7 px-2 text-xs text-[#16a34a] hover:bg-[#f0fdf4] font-medium"
+                          >
+                            등록
+                          </Button>
+                        )}
                         {/* 가상 레코드가 아니거나, 출퇴근 기록이 하나라도 있는 경우만 수정 가능 */}
-                        {(!record.id.startsWith('virtual_') || record.check_in_time || record.check_out_time) && (
+                        {(!record.id.startsWith('virtual_') || record.check_in_time || record.check_out_time) && (record.check_in_time || record.check_out_time) && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -451,16 +512,12 @@ export default function AllAttendancePage() {
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         )}
-                        {record.is_modified && (
-                          <Badge className="ml-2 bg-[#f3f4f6] text-[#718096] border-[#e5e7eb] text-[10px] px-1.5 py-0 h-4">
-                            수정됨
-                          </Badge>
-                        )}
                       </div>
                     </td>
                   </tr>
-                  )
-                })}
+                    )
+                  })
+                })()}
               </tbody>
             </table>
             
@@ -494,6 +551,17 @@ export default function AllAttendancePage() {
           record={selectedRecord}
           onComplete={handleModifyComplete}
           modifiedBy={currentUser?.name || ""}
+        />
+      )}
+
+      {/* 근태 등록 다이얼로그 */}
+      {selectedRecord && (
+        <AttendanceRegisterDialog
+          open={showRegisterDialog}
+          onOpenChange={setShowRegisterDialog}
+          record={selectedRecord}
+          onComplete={handleModifyComplete}
+          registeredBy={currentUser?.name || ""}
         />
       )}
 

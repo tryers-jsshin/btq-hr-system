@@ -161,9 +161,9 @@ export default function MileageManagePage() {
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
                       <span className={`text-sm font-semibold ${
-                        member.balance >= 0 ? 'text-[#16a34a]' : 'text-[#dc2626]'
+                        member.balance > 0 ? 'text-[#16a34a]' : member.balance < 0 ? 'text-[#dc2626]' : 'text-[#718096]'
                       }`}>
-                        {member.balance < 0 ? '-' : '+'}
+                        {member.balance !== 0 && (member.balance < 0 ? '-' : '+')}
                         {formatMinutes(Math.abs(member.balance))}
                       </span>
                     </td>

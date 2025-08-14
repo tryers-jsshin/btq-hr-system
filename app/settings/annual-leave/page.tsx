@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Play, RefreshCw, AlertTriangle, Clock, Eye } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { Card, CardContent } from "@/components/ui/card"
+import { Play, RefreshCw, AlertTriangle, Clock, Eye, Loader2, Users } from "lucide-react"
 import { AnnualLeavePolicyFormDialog } from "@/components/annual-leave-policy-form-dialog"
 import { AnnualLeavePolicyViewDialog } from "@/components/annual-leave-policy-view-dialog"
 import { AnnualLeaveHistoryDialog } from "@/components/annual-leave-history-dialog"
@@ -31,6 +33,7 @@ export default function AnnualLeavePage() {
   const [adjustType, setAdjustType] = useState<"grant" | "expire">("grant")
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
+  const [updateProgress, setUpdateProgress] = useState({ current: 0, total: 0, memberName: "" })
   const { toast } = useToast()
 
   useEffect(() => {
@@ -105,10 +108,13 @@ export default function AnnualLeavePage() {
   const handleRunUpdate = async () => {
     try {
       setUpdating(true)
+      setUpdateProgress({ current: 0, total: 0, memberName: "" })
 
-      // 오늘 날짜로 연차 업데이트 실행
+      // 오늘 날짜로 연차 업데이트 실행 (프로그레스 콜백 포함)
       const today = new Date()
-      const results = await runDailyAnnualLeaveUpdate(today)
+      const results = await runDailyAnnualLeaveUpdate(today, (current, total, memberName) => {
+        setUpdateProgress({ current, total, memberName })
+      })
 
       toast({
         title: "연차 업데이트 완료",
@@ -134,6 +140,7 @@ export default function AnnualLeavePage() {
       })
     } finally {
       setUpdating(false)
+      setUpdateProgress({ current: 0, total: 0, memberName: "" })
     }
   }
 
@@ -546,6 +553,49 @@ export default function AnnualLeavePage() {
           balance={adjustingBalance}
           onSave={handleGrantCancel}
         />
+
+        {/* 프로그레스 오버레이 */}
+        {updating && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-96 bg-white shadow-xl">
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-[#5e6ad2]" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-[#0a0b0c]">연차 업데이트 진행 중...</p>
+                      {updateProgress.total > 0 && (
+                        <p className="text-xs text-[#718096] mt-1">
+                          {updateProgress.memberName} 처리 중
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {updateProgress.total > 0 && (
+                    <>
+                      <Progress 
+                        value={(updateProgress.current / updateProgress.total) * 100} 
+                        className="h-2"
+                      />
+                      <div className="flex items-center justify-between text-xs text-[#718096]">
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {updateProgress.current}/{updateProgress.total}명 완료
+                        </span>
+                        <span>{Math.round((updateProgress.current / updateProgress.total) * 100)}%</span>
+                      </div>
+                    </>
+                  )}
+                  
+                  {updateProgress.total === 0 && (
+                    <p className="text-xs text-[#718096]">구성원 정보를 불러오는 중...</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -181,12 +181,17 @@ class SupabaseAnnualLeaveStorageV2 {
       return
     }
 
-    // 기존 잔액 레코드 확인
-    const { data: existingBalance } = await supabase
+    // 기존 잔액 레코드 확인 (406 에러 처리 포함)
+    const { data: existingBalance, error: selectError } = await supabase
       .from("annual_leave_balances")
       .select("id")
       .eq("member_id", memberId)
       .single()
+    
+    // 406 에러나 다른 에러 발생 시 로그만 남기고 계속 진행
+    if (selectError && selectError.code !== "PGRST116") {
+      console.warn(`잔액 레코드 조회 중 에러 (무시하고 진행): ${selectError.message}`)
+    }
 
     const balanceData = {
       member_id: memberId,
@@ -200,21 +205,13 @@ class SupabaseAnnualLeaveStorageV2 {
       last_updated: new Date().toISOString(),
     }
 
-    let error
-    if (existingBalance) {
-      // 기존 레코드 업데이트
-      const result = await supabase
-        .from("annual_leave_balances")
-        .update(balanceData)
-        .eq("id", existingBalance.id)
-      error = result.error
-    } else {
-      // 새 레코드 생성
-      const result = await supabase
-        .from("annual_leave_balances")
-        .insert(balanceData)
-      error = result.error
-    }
+    // upsert 사용 (member_id가 unique이므로 자동으로 insert/update 처리)
+    const { error } = await supabase
+      .from("annual_leave_balances")
+      .upsert(balanceData, { 
+        onConflict: 'member_id',
+        ignoreDuplicates: false 
+      })
 
     if (error) {
       console.error("잔액 업데이트 오류:", error)
@@ -255,6 +252,73 @@ class SupabaseAnnualLeaveStorageV2 {
 
     // 사용 가능한 부여만 반환
     return grantsWithUsage.filter(g => g.availableAmount > 0)
+  }
+
+  // 배치 조회: 여러 구성원의 모든 트랜잭션을 한 번에 조회
+  async getBatchTransactions(memberIds: string[]): Promise<Map<string, AnnualLeaveTransaction[]>> {
+    console.log(`[배치 조회] ${memberIds.length}명의 트랜잭션 조회 시작`)
+    
+    const { data, error } = await supabase
+      .from("annual_leave_transactions")
+      .select("*")
+      .in("member_id", memberIds)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("배치 트랜잭션 조회 오류:", error)
+      throw error
+    }
+
+    // 구성원별로 그룹핑
+    const transactionMap = new Map<string, AnnualLeaveTransaction[]>()
+    
+    for (const memberId of memberIds) {
+      transactionMap.set(memberId, [])
+    }
+    
+    for (const transaction of (data as AnnualLeaveTransaction[]) || []) {
+      const memberTransactions = transactionMap.get(transaction.member_id) || []
+      memberTransactions.push(transaction)
+      transactionMap.set(transaction.member_id, memberTransactions)
+    }
+    
+    console.log(`[배치 조회] 완료 - 총 ${data?.length || 0}개 트랜잭션`)
+    return transactionMap
+  }
+
+  // 배치 잔액 업데이트
+  async updateBatchBalances(balances: Array<{
+    member_id: string
+    member_name: string
+    team_name: string
+    join_date: string
+    total_granted: number
+    total_used: number
+    total_expired: number
+    current_balance: number
+  }>): Promise<void> {
+    console.log(`[배치 업데이트] ${balances.length}명의 잔액 업데이트 시작`)
+    
+    // 배치 upsert 사용 (member_id가 unique이므로 자동으로 insert/update 처리)
+    const timestamp = new Date().toISOString()
+    const balanceDataWithTimestamp = balances.map(b => ({
+      ...b,
+      last_updated: timestamp,
+    }))
+    
+    const { error } = await supabase
+      .from("annual_leave_balances")
+      .upsert(balanceDataWithTimestamp, { 
+        onConflict: 'member_id',
+        ignoreDuplicates: false 
+      })
+    
+    if (error) {
+      console.error("배치 업데이트 오류:", error)
+      throw error
+    }
+    
+    console.log(`[배치 업데이트] 완료 - ${balances.length}건 처리`)
   }
 
   // 부여 트랜잭션 소멸 처리 (expired 필드 업데이트)

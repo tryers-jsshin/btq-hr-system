@@ -229,8 +229,8 @@ export default function MyAttendancePage() {
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4">
               <Card className="bg-white border-[#f3f4f6] shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-4 text-center">
-                  <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-2xl font-bold text-[#0a0b0c]">{monthlySummary.work_days}</span>
+                  <div className="text-2xl font-bold text-[#0a0b0c]">
+                    {monthlySummary.work_days}
                     <span className="text-lg text-[#a0aec0]">/</span>
                     <span className="text-lg text-[#718096]">{scheduledDays}</span>
                   </div>
@@ -245,34 +245,34 @@ export default function MyAttendancePage() {
               </Card>
               <Card className="bg-white border-[#f3f4f6] shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-4 text-center">
-                  <div className="text-xl font-bold text-[#dc2626]">
+                  <div className="text-2xl font-bold text-[#dc2626]">
                     {formatMinutes(mileageSummary.lateMinutes)}
                   </div>
-                  <div className="text-sm text-[#718096]">{parseInt(selectedMonth.split('-')[1])}월 지각(분)</div>
+                  <div className="text-sm text-[#718096]">{parseInt(selectedMonth.split('-')[1])}월 지각</div>
                 </CardContent>
               </Card>
               <Card className="bg-white border-[#f3f4f6] shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-4 text-center">
-                  <div className="text-xl font-bold text-[#ea580c]">
+                  <div className="text-2xl font-bold text-[#ea580c]">
                     {formatMinutes(mileageSummary.earlyLeaveMinutes)}
                   </div>
-                  <div className="text-sm text-[#718096]">{parseInt(selectedMonth.split('-')[1])}월 조기퇴근(분)</div>
+                  <div className="text-sm text-[#718096]">{parseInt(selectedMonth.split('-')[1])}월 조기퇴근</div>
                 </CardContent>
               </Card>
               <Card className="bg-white border-[#f3f4f6] shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-4 text-center">
-                  <div className="text-xl font-bold text-[#2563eb]">
+                  <div className="text-2xl font-bold text-[#2563eb]">
                     {formatMinutes(mileageSummary.overtimeMinutes)}
                   </div>
-                  <div className="text-sm text-[#718096]">{parseInt(selectedMonth.split('-')[1])}월 초과근무(분)</div>
+                  <div className="text-sm text-[#718096]">{parseInt(selectedMonth.split('-')[1])}월 초과근무</div>
                 </CardContent>
               </Card>
               <Card className="bg-white border-[#f3f4f6] shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-4 text-center">
-                  <div className={`text-xl font-bold ${
-                    mileageSummary.monthlyChange >= 0 ? "text-[#16a34a]" : "text-[#dc2626]"
+                  <div className={`text-2xl font-bold ${
+                    mileageSummary.monthlyChange > 0 ? "text-[#16a34a]" : mileageSummary.monthlyChange < 0 ? "text-[#dc2626]" : "text-[#718096]"
                   }`}>
-                    {mileageSummary.monthlyChange < 0 ? "-" : "+"}
+                    {mileageSummary.monthlyChange !== 0 && (mileageSummary.monthlyChange < 0 ? "-" : "+")}
                     {formatMinutes(Math.abs(mileageSummary.monthlyChange))}
                   </div>
                   <div className="text-sm text-[#718096]">{parseInt(selectedMonth.split('-')[1])}월 마일리지</div>
@@ -289,7 +289,7 @@ export default function MyAttendancePage() {
                     실시간 마일리지 현황
                   </span>
                   <span className={`text-xl font-bold`}>
-                    {mileageSummary.currentBalance < 0 ? "-" : "+"}
+                    {mileageSummary.currentBalance !== 0 && (mileageSummary.currentBalance < 0 ? "-" : "+")}
                     {formatMinutes(Math.abs(mileageSummary.currentBalance))}
                   </span>
                 </div>

@@ -165,105 +165,166 @@ export default function WorkTypesPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">근무 유형 관리</h1>
-        </div>
-        <div className="text-center py-8">
-          <p className="text-gray-500">로딩 중...</p>
+      <div className="min-h-screen bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-48 mb-2"></div>
+            <div className="h-4 bg-gray-100 rounded w-64 mb-8"></div>
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-16 bg-gray-50 rounded"></div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">근무 유형 관리</h1>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">근무 유형 관리</h1>
+            </div>
+          </div>
+        </div>
+
+        <Tabs defaultValue="work-types" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-[#fafbfb] p-1 rounded-lg border border-[#f3f4f6]">
+            <TabsTrigger 
+              value="work-types" 
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-[#0a0b0c] data-[state=active]:shadow-sm text-[#4a5568] transition-all duration-100"
+            >
+              <Clock className="h-4 w-4" />
+              근무 유형
+            </TabsTrigger>
+            <TabsTrigger 
+              value="leave-types" 
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-[#0a0b0c] data-[state=active]:shadow-sm text-[#4a5568] transition-all duration-100"
+            >
+              <Calendar className="h-4 w-4" />
+              휴가 유형
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="work-types" className="mt-6">
+            <div className="bg-white rounded-lg border border-[#f3f4f6] overflow-hidden">
+              <div className="p-4 sm:p-6 border-b border-[#f3f4f6]">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[#0a0b0c] flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-[#5e6ad2]" />
+                      일반 근무 유형
+                    </h2>
+                    <p className="text-sm text-[#718096] mt-1">출근, 재택근무 등 일반적인 근무 유형을 관리합니다</p>
+                  </div>
+                  <Button 
+                    onClick={handleAddNew}
+                    className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white transition-all duration-100 flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    근무 유형 추가
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6">
+                {workTypes.length === 0 ? (
+                  <div className="text-center py-8 sm:py-12">
+                    <Clock className="h-12 w-12 text-[#cbd5e1] mx-auto mb-3" />
+                    <p className="text-[#4a5568] font-medium mb-4">등록된 근무 유형이 없습니다</p>
+                    <Button 
+                      onClick={handleAddNew}
+                      variant="outline"
+                      className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] transition-all duration-100"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      첫 번째 근무 유형 추가
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                    {workTypes.map((workType) => (
+                      <WorkTypeCard key={workType.id} workType={workType} onEdit={handleEdit} onDelete={handleDelete} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="leave-types" className="mt-6">
+            <div className="bg-white rounded-lg border border-[#f3f4f6] overflow-hidden">
+              <div className="p-4 sm:p-6 border-b border-[#f3f4f6]">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[#0a0b0c] flex items-center gap-2">
+                      <Calendar className="h-5 w-5 text-[#5e6ad2]" />
+                      휴가 유형
+                    </h2>
+                    <p className="text-sm text-[#718096] mt-1">연차, 반차, 조퇴 등 휴가 유형을 관리합니다</p>
+                  </div>
+                  <Button 
+                    onClick={handleAddLeaveType}
+                    className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white transition-all duration-100 flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    휴가 유형 추가
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6">
+                {leaveTypes.length === 0 ? (
+                  <div className="text-center py-8 sm:py-12">
+                    <Calendar className="h-12 w-12 text-[#cbd5e1] mx-auto mb-3" />
+                    <p className="text-[#4a5568] font-medium mb-4">등록된 휴가 유형이 없습니다</p>
+                    <Button 
+                      onClick={handleAddLeaveType}
+                      variant="outline"
+                      className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] transition-all duration-100"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      첫 번째 휴가 유형 추가
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                    {leaveTypes.map((workType) => (
+                      <WorkTypeCard 
+                        key={workType.id} 
+                        workType={workType} 
+                        onEdit={handleEditLeaveType} 
+                        onDelete={handleDeleteLeaveType} 
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {/* 다이얼로그들 */}
+        <WorkTypeFormDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          workType={editingWorkType}
+          onSave={handleSave}
+        />
+
+        <WorkTypeFormDialog
+          open={leaveDialogOpen}
+          onOpenChange={setLeaveDialogOpen}
+          workType={editingLeaveType}
+          onSave={handleSaveLeaveType}
+          isLeaveType={true}
+        />
       </div>
-
-      <Tabs defaultValue="work-types" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="work-types" className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            근무 유형
-          </TabsTrigger>
-          <TabsTrigger value="leave-types" className="flex items-center gap-2">
-            <Calendar className="h-4 w-4" />
-            휴가 유형
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="work-types" className="mt-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-semibold">일반 근무 유형</h2>
-            <Button onClick={handleAddNew}>
-              <Plus className="h-4 w-4 mr-2" />
-              근무 유형 추가
-            </Button>
-          </div>
-
-          {workTypes.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500 mb-4">등록된 근무 유형이 없습니다.</p>
-              <Button onClick={handleAddNew}>
-                <Plus className="h-4 w-4 mr-2" />첫 번째 근무 유형 추가
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {workTypes.map((workType) => (
-                <WorkTypeCard key={workType.id} workType={workType} onEdit={handleEdit} onDelete={handleDelete} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="leave-types" className="mt-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-semibold">휴가 유형</h2>
-            <Button onClick={handleAddLeaveType}>
-              <Plus className="h-4 w-4 mr-2" />
-              휴가 유형 추가
-            </Button>
-          </div>
-
-          {leaveTypes.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500 mb-4">등록된 휴가 유형이 없습니다.</p>
-              <Button onClick={handleAddLeaveType}>
-                <Plus className="h-4 w-4 mr-2" />첫 번째 휴가 유형 추가
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {leaveTypes.map((workType) => (
-                <WorkTypeCard 
-                  key={workType.id} 
-                  workType={workType} 
-                  onEdit={handleEditLeaveType} 
-                  onDelete={handleDeleteLeaveType} 
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      <WorkTypeFormDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        workType={editingWorkType}
-        onSave={handleSave}
-      />
-
-      <WorkTypeFormDialog
-        open={leaveDialogOpen}
-        onOpenChange={setLeaveDialogOpen}
-        workType={editingLeaveType}
-        onSave={handleSaveLeaveType}
-        isLeaveType={true}
-      />
     </div>
   )
 }
