@@ -50,7 +50,7 @@ export const supabaseAuthStorage = {
         localStorage.setItem("currentUser", JSON.stringify(data))
       }
 
-      return { success: true, user: data, message: "로그인 성공" }
+      return { success: true, user: data, message: "환영합니다!" }
     } catch (error) {
       console.error("로그인 오류:", error)
       return { success: false, message: "로그인 중 오류가 발생했습니다." }

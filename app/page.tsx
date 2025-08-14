@@ -2,117 +2,27 @@
 
 import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
-import { Users, UserCheck, UserX, Calendar, Clock, TrendingUp, Building2, PlaneTakeoff } from "lucide-react"
-import { supabaseMemberStorage } from "@/lib/supabase-member-storage"
-import { supabaseTeamStorage } from "@/lib/supabase-team-storage"
-import { supabaseLeaveRequestStorage } from "@/lib/supabase-leave-request-storage"
-import { supabaseWorkScheduleStorage } from "@/lib/supabase-work-schedule-storage"
+import { Clock } from "lucide-react"
 import { supabaseAuthStorage } from "@/lib/supabase-auth-storage"
-import { format, startOfMonth, endOfMonth } from "date-fns"
+import { format } from "date-fns"
 import { ko } from "date-fns/locale"
 
-interface DashboardStats {
-  totalMembers: number
-  activeMembers: number
-  terminatedMembers: number
-  totalTeams: number
-  pendingLeaves: number
-  todayWorkSchedule: {
-    working: number
-    leave: number
-    holiday: number
-  }
-  monthlyLeaves: number
-}
-
 export default function Dashboard() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalMembers: 0,
-    activeMembers: 0,
-    terminatedMembers: 0,
-    totalTeams: 0,
-    pendingLeaves: 0,
-    todayWorkSchedule: {
-      working: 0,
-      leave: 0,
-      holiday: 0
-    },
-    monthlyLeaves: 0
-  })
-  const [isLoading, setIsLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    loadDashboardData()
+    loadUserData()
   }, [])
 
-  const loadDashboardData = async () => {
+  const loadUserData = async () => {
     try {
       setIsLoading(true)
-      
-      // 현재 사용자 정보 가져오기
+      // 현재 사용자 정보만 가져오기
       const user = await supabaseAuthStorage.getCurrentUser()
       setCurrentUser(user)
-
-      // 구성원 통계
-      const allMembers = await supabaseMemberStorage.getMembers()
-      const activeMembers = allMembers.filter(m => m.status === 'active')
-      const terminatedMembers = allMembers.filter(m => m.status === 'terminated')
-
-      // 팀 통계
-      const teams = await supabaseTeamStorage.getTeams()
-
-      // 연차 신청 통계 (관리자만)
-      let pendingLeaves = 0
-      let monthlyLeaves = 0
-      
-      if (user?.role === '관리자') {
-        const leaveRequests = await supabaseLeaveRequestStorage.getAllLeaveRequests()
-        pendingLeaves = leaveRequests.filter(l => l.status === 'pending').length
-        
-        // 이번 달 승인된 연차
-        const monthStart = startOfMonth(new Date())
-        const monthEnd = endOfMonth(new Date())
-        monthlyLeaves = leaveRequests.filter(l => 
-          l.status === 'approved' &&
-          new Date(l.start_date) >= monthStart &&
-          new Date(l.start_date) <= monthEnd
-        ).length
-      }
-
-      // 오늘의 근무표
-      const today = format(new Date(), 'yyyy-MM-dd')
-      const todaySchedules = await supabaseWorkScheduleStorage.getWorkScheduleByDate(today)
-      
-      let working = 0
-      let leave = 0
-      let holiday = 0
-
-      todaySchedules.forEach(schedule => {
-        if (schedule.work_type?.is_leave) {
-          leave++
-        } else if (schedule.work_type?.is_holiday) {
-          holiday++
-        } else {
-          working++
-        }
-      })
-
-      setStats({
-        totalMembers: allMembers.length,
-        activeMembers: activeMembers.length,
-        terminatedMembers: terminatedMembers.length,
-        totalTeams: teams.length,
-        pendingLeaves,
-        todayWorkSchedule: {
-          working,
-          leave,
-          holiday
-        },
-        monthlyLeaves
-      })
     } catch (error) {
-      console.error("대시보드 데이터 로드 실패:", error)
+      console.error("사용자 정보 로드 실패:", error)
     } finally {
       setIsLoading(false)
     }
