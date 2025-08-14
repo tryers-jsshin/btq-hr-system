@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ChevronLeft, ChevronRight, Calendar, Edit, AlertTriangle, Plus, Trash2 } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { ChevronLeft, ChevronRight, Calendar, Edit, AlertTriangle, Plus, Trash2, Loader2, RotateCcw } from "lucide-react"
 import { supabaseWorkScheduleStorage } from "@/lib/supabase-work-schedule-storage"
 import { supabaseWorkTypeStorage } from "@/lib/supabase-work-type-storage"
 import { WorkScheduleEditDialog } from "@/components/work-schedule-edit-dialog"
@@ -63,6 +64,9 @@ export default function WorkScheduleManage() {
     dayName: string
   } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(false)
+  const [processingMessage, setProcessingMessage] = useState("")
+  const [processingProgress, setProcessingProgress] = useState(0)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -213,12 +217,23 @@ export default function WorkScheduleManage() {
     startDate: string
     endDate: string
   }) => {
+    setProcessing(true)
+    setProcessingMessage("근무표를 일괄 생성하고 있습니다...")
+    setProcessingProgress(30)
+    
     try {
       const result = await supabaseWorkScheduleStorage.bulkCreateSchedule(
         data.memberIds,
         data.startDate,
         data.endDate,
       )
+
+      setProcessingProgress(70)
+      setProcessingMessage("근태 및 마일리지를 업데이트하고 있습니다...")
+      
+      // 완료까지 잠시 대기 (UI 피드백)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      setProcessingProgress(100)
 
       let description = `${data.memberIds.length}명의 구성원에 대해 ${result.created}개의 근무 일정이 생성되었습니다.`
       
@@ -240,6 +255,10 @@ export default function WorkScheduleManage() {
         description: "근무표 일괄 생성에 실패했습니다.",
         variant: "destructive",
       })
+    } finally {
+      setProcessing(false)
+      setProcessingMessage("")
+      setProcessingProgress(0)
     }
   }
 
@@ -248,12 +267,23 @@ export default function WorkScheduleManage() {
     startDate: string
     endDate: string
   }) => {
+    setProcessing(true)
+    setProcessingMessage("근무표를 일괄 삭제하고 있습니다...")
+    setProcessingProgress(30)
+    
     try {
       const result = await supabaseWorkScheduleStorage.bulkDeleteSchedule(
         data.memberIds,
         data.startDate,
         data.endDate,
       )
+
+      setProcessingProgress(70)
+      setProcessingMessage("근태 및 마일리지를 업데이트하고 있습니다...")
+      
+      // 완료까지 잠시 대기 (UI 피드백)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      setProcessingProgress(100)
 
       let description = `${data.memberIds.length}명의 구성원에 대해 ${result.deleted}개의 근무 일정이 삭제되었습니다.`
       
@@ -275,11 +305,19 @@ export default function WorkScheduleManage() {
         description: "근무표 일괄 삭제에 실패했습니다.",
         variant: "destructive",
       })
+    } finally {
+      setProcessing(false)
+      setProcessingMessage("")
+      setProcessingProgress(0)
     }
   }
 
   const handleSaveChanges = async () => {
     if (changes.length === 0) return
+
+    setProcessing(true)
+    setProcessingMessage(`${changes.length}개의 변경사항을 저장하고 있습니다...`)
+    setProcessingProgress(30)
 
     try {
       console.log("Saving changes:", changes)
@@ -293,6 +331,13 @@ export default function WorkScheduleManage() {
       console.log("Mapped updates:", updates)
 
       await supabaseWorkScheduleStorage.batchUpdateSchedule(updates)
+
+      setProcessingProgress(70)
+      setProcessingMessage("근태 및 마일리지를 업데이트하고 있습니다...")
+      
+      // 완료까지 잠시 대기 (UI 피드백)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      setProcessingProgress(100)
 
       toast({
         title: "근무 일정이 저장되었습니다",
@@ -315,6 +360,10 @@ export default function WorkScheduleManage() {
         description: errorMessage,
         variant: "destructive",
       })
+    } finally {
+      setProcessing(false)
+      setProcessingMessage("")
+      setProcessingProgress(0)
     }
   }
 
@@ -416,11 +465,19 @@ export default function WorkScheduleManage() {
               </h1>
             </div>
             <div className="flex items-center gap-2">
-              <Button onClick={() => setBulkCreateDialogOpen(true)} className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white">
+              <Button 
+                onClick={() => setBulkCreateDialogOpen(true)} 
+                className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white"
+                disabled={processing}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 근무표 일괄 생성
               </Button>
-              <Button onClick={() => setBulkDeleteDialogOpen(true)} className="bg-[#dc2626] hover:bg-[#b91c1c] text-white">
+              <Button 
+                onClick={() => setBulkDeleteDialogOpen(true)} 
+                className="bg-[#dc2626] hover:bg-[#b91c1c] text-white"
+                disabled={processing}
+              >
                 <Trash2 className="h-4 w-4 mr-2" />
                 근무표 일괄 삭제
               </Button>
@@ -458,6 +515,7 @@ export default function WorkScheduleManage() {
                   variant="outline"
                   onClick={handleCancelChanges}
                   className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb]"
+                  disabled={processing}
                 >
                   취소
                 </Button>
@@ -465,6 +523,7 @@ export default function WorkScheduleManage() {
                   size="sm"
                   onClick={handleSaveChanges}
                   className="bg-[#16a34a] hover:bg-[#15803d] text-white"
+                  disabled={processing}
                 >
                   저장
                 </Button>
@@ -484,35 +543,48 @@ export default function WorkScheduleManage() {
                 size="sm" 
                 onClick={handlePreviousWeek}
                 className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] h-8 w-8 p-0"
+                disabled={processing}
+                title="이전 주"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="text-sm sm:text-base font-semibold text-[#0a0b0c]">
+              
+              <div className="text-sm sm:text-base font-semibold text-[#0a0b0c] min-w-[140px] text-center">
                 {formatDateRange(weeklySchedule.weekStart, weeklySchedule.weekEnd)}
               </div>
+              
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={handleNextWeek}
                 className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] h-8 w-8 p-0"
+                disabled={processing}
+                title="다음 주"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              {!isCurrentWeek() && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
+              
+              <Button
+                variant={isCurrentWeek() ? "ghost" : "outline"}
+                size="sm"
+                onClick={async () => {
+                  if (!isCurrentWeek()) {
                     const today = supabaseWorkScheduleStorage.getCurrentWeekStart()
                     setCurrentWeekStart(today)
                     await loadWeeklySchedule(today)
-                    setChanges([]) // 주차 변경 시 변경사항 초기화
-                  }}
-                  className="border-[#f3f4f6] text-[#5e6ad2] hover:bg-[#fafbfb] h-8 px-3"
-                >
-                  오늘
-                </Button>
-              )}
+                    setChanges([])
+                  }
+                }}
+                className={
+                  isCurrentWeek() 
+                    ? "h-8 w-8 p-0 text-[#a0aec0] cursor-default hover:bg-transparent" 
+                    : "border-[#f3f4f6] text-[#5e6ad2] hover:bg-[#fafbfb] h-8 w-8 p-0"
+                }
+                disabled={processing || isCurrentWeek()}
+                title={isCurrentWeek() ? "현재 주" : "오늘이 포함된 주로 이동"}
+              >
+                <RotateCcw className={isCurrentWeek() ? "h-4 w-4" : "h-4 w-4"} />
+              </Button>
             </div>
           </div>
         </div>
@@ -651,6 +723,22 @@ export default function WorkScheduleManage() {
         onOpenChange={setBulkDeleteDialogOpen}
         onDelete={handleBulkDelete}
       />
+
+      {/* 프로그레스 오버레이 */}
+      {processing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-96 bg-white shadow-xl">
+            <CardContent className="p-6">
+              <div className="flex items-center mb-4">
+                <Loader2 className="h-5 w-5 animate-spin text-[#5e6ad2] mr-3" />
+                <p className="text-sm font-medium text-[#0a0b0c]">{processingMessage}</p>
+              </div>
+              <Progress value={processingProgress} className="h-2" />
+              <p className="text-xs text-[#718096] mt-2">{processingProgress}% 완료</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
       </div>
     </div>
   )

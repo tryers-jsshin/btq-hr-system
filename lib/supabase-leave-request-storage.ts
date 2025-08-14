@@ -576,24 +576,32 @@ export class SupabaseLeaveRequestStorage {
     return false
   }
 
-  // 근무표에 연차 반영
+  // 근무표에 연차 반영 (최적화 버전)
   private async updateWorkScheduleForLeave(request: LeaveRequest): Promise<void> {
-    console.log("근무표에 연차 반영:", request)
+    console.log("근무표에 연차 반영 (배치 처리):", request)
+    const startTime = Date.now()
 
-    // work_types 테이블에서 연차 유형별 ID 조회 (is_leave가 true인 것들)
-    const { data: workTypes, error } = await supabase
+    // 1. 필요한 work_type 정보 한 번에 조회
+    const { data: workTypes, error: wtError } = await supabase
       .from("work_types")
-      .select("id, name")
-      .eq("is_leave", true)
+      .select("id, name, is_leave, is_holiday")
+      .or("is_leave.eq.true,is_holiday.eq.true")
 
-    if (error || !workTypes) {
-      console.error("근무 유형 조회 오류:", error)
+    if (wtError || !workTypes) {
+      console.error("근무 유형 조회 오류:", wtError)
       return
     }
 
     const workTypeMap: Record<string, string> = {}
+    const holidayWorkTypeIds = new Set<string>()
+    
     workTypes.forEach(wt => {
-      workTypeMap[wt.name] = wt.id
+      if (wt.is_leave) {
+        workTypeMap[wt.name] = wt.id
+      }
+      if (wt.is_holiday) {
+        holidayWorkTypeIds.add(wt.id)
+      }
     })
 
     const workTypeId = workTypeMap[request.leave_type]
@@ -602,84 +610,142 @@ export class SupabaseLeaveRequestStorage {
       return
     }
 
-    // 휴무일 유형 IDs 조회 (is_holiday = true)
-    const { data: holidayWorkTypes } = await supabase
-      .from("work_types")
-      .select("id, name")
-      .eq("is_holiday", true)
-    
-    const holidayWorkTypeIds = new Set(holidayWorkTypes?.map(wt => wt.id) || [])
-
+    // 2. 날짜 범위 생성
+    const dates: string[] = []
     const start = new Date(request.start_date)
     const end = new Date(request.end_date)
     const current = new Date(start)
-
+    
     while (current <= end) {
-      const dateStr = current.toISOString().split("T")[0]
-      
-      // 해당 날짜의 기존 근무표 확인
-      const { data: existingSchedule } = await supabase
-        .from("work_schedule_entries")
-        .select("id, work_type_id")
-        .eq("member_id", request.member_id)
-        .eq("date", dateStr)
-        .single()
-      
-      // 휴무일 체크 및 처리
-      if (existingSchedule) {
-        // 기존 스케줄이 휴무일인지 확인
-        if (holidayWorkTypeIds.has(existingSchedule.work_type_id)) {
-          // 휴무일인 경우 근무표 변경하지 않음
-          const { data: holidayType } = await supabase
-            .from("work_types")
-            .select("name")
-            .eq("id", existingSchedule.work_type_id)
-            .single()
-          console.log(`${dateStr}는 휴무일(${holidayType?.name})이므로 근무표를 변경하지 않습니다`)
-        } else {
-          // 휴무일이 아닌 경우 연차로 업데이트
-          try {
-            await supabase
-              .from("work_schedule_entries")
-              .update({
-                work_type_id: workTypeId,
-                original_work_type_id: existingSchedule.work_type_id, // 원래 근무 백업
-                replaced_by_leave_id: request.id // 연차 신청 ID 저장
-              })
-              .eq("id", existingSchedule.id)
-            console.log(`${dateStr} 근무표를 연차로 업데이트`)
-            
-            // 근태 기록도 업데이트
-            const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
-            await supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, dateStr)
-            console.log(`${dateStr} 근태 기록 업데이트`)
-          } catch (error) {
-            console.error(`근무표 업데이트 오류 (${dateStr}):`, error)
-          }
-        }
-      } else {
-        // 기존 근무가 없으면 새로 생성
-        try {
-          await supabase
-            .from("work_schedule_entries")
-            .insert({
-              member_id: request.member_id,
-              date: dateStr,
-              work_type_id: workTypeId,
-              replaced_by_leave_id: request.id
-            })
-          console.log(`${dateStr} 근무표 새로 생성`)
-          
-          // 근태 기록도 업데이트
-          const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
-          await supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, dateStr)
-          console.log(`${dateStr} 근태 기록 업데이트`)
-        } catch (error) {
-          console.error(`근무표 생성 오류 (${dateStr}):`, error)
-        }
-      }
-      
+      dates.push(current.toISOString().split("T")[0])
       current.setDate(current.getDate() + 1)
+    }
+    
+    console.log(`처리할 날짜: ${dates.length}일`)
+
+    // 3. 모든 날짜의 기존 근무표 한 번에 조회
+    const { data: existingSchedules, error: schedError } = await supabase
+      .from("work_schedule_entries")
+      .select("id, date, work_type_id")
+      .eq("member_id", request.member_id)
+      .in("date", dates)
+    
+    if (schedError) {
+      console.error("근무표 조회 오류:", schedError)
+      return
+    }
+
+    // 날짜별 스케줄 맵 생성
+    const scheduleMap = new Map<string, any>()
+    existingSchedules?.forEach(schedule => {
+      scheduleMap.set(schedule.date, schedule)
+    })
+
+    // 4. 업데이트할 항목과 새로 생성할 항목 분류
+    const toUpdate: any[] = []
+    const toInsert: any[] = []
+    const skipDates: string[] = [] // 휴무일로 건너뛸 날짜
+    
+    for (const dateStr of dates) {
+      const existingSchedule = scheduleMap.get(dateStr)
+      
+      if (existingSchedule) {
+        // 휴무일인지 확인
+        if (holidayWorkTypeIds.has(existingSchedule.work_type_id)) {
+          skipDates.push(dateStr)
+          continue
+        }
+        // 업데이트 대상
+        toUpdate.push({
+          id: existingSchedule.id,
+          work_type_id: workTypeId,
+          original_work_type_id: existingSchedule.work_type_id,
+          replaced_by_leave_id: request.id
+        })
+      } else {
+        // 새로 생성 대상
+        toInsert.push({
+          member_id: request.member_id,
+          date: dateStr,
+          work_type_id: workTypeId,
+          replaced_by_leave_id: request.id
+        })
+      }
+    }
+
+    console.log(`근무표 처리 계획: 업데이트 ${toUpdate.length}건, 생성 ${toInsert.length}건, 스킵 ${skipDates.length}건`)
+
+    // 5. 배치 업데이트 실행
+    if (toUpdate.length > 0) {
+      // 배치 업데이트를 위해 각 항목별로 처리
+      const updatePromises = toUpdate.map(item => 
+        supabase
+          .from("work_schedule_entries")
+          .update({
+            work_type_id: item.work_type_id,
+            original_work_type_id: item.original_work_type_id,
+            replaced_by_leave_id: item.replaced_by_leave_id
+          })
+          .eq("id", item.id)
+      )
+      
+      await Promise.all(updatePromises)
+      console.log(`${toUpdate.length}개 근무표 업데이트 완료`)
+    }
+
+    // 6. 배치 삽입 실행
+    if (toInsert.length > 0) {
+      const { error: insertError } = await supabase
+        .from("work_schedule_entries")
+        .insert(toInsert)
+      
+      if (insertError) {
+        console.error("근무표 배치 삽입 오류:", insertError)
+      } else {
+        console.log(`${toInsert.length}개 근무표 생성 완료`)
+      }
+    }
+
+    // 7. 근태 레코드 있는 날짜 확인
+    const affectedDates = [...toUpdate.map(u => {
+      // toUpdate에서 date 찾기
+      for (const [date, schedule] of scheduleMap.entries()) {
+        if (schedule.id === u.id) return date
+      }
+      return null
+    }).filter(Boolean), ...toInsert.map(i => i.date)]
+
+    if (affectedDates.length > 0) {
+      const { data: attendanceRecords, error: attError } = await supabase
+        .from("attendance_records")
+        .select("work_date")
+        .eq("member_id", request.member_id)
+        .in("work_date", affectedDates)
+      
+      if (!attError && attendanceRecords && attendanceRecords.length > 0) {
+        console.log(`${attendanceRecords.length}개 날짜에 근태 기록 존재, 마일리지 업데이트 필요`)
+        
+        // 8. 근태가 있는 날짜만 마일리지 업데이트 (배치)
+        const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+        const attendanceDates = attendanceRecords.map(r => r.work_date)
+        
+        // 배치로 처리
+        const updatePromises = attendanceDates.map(date => 
+          supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, date)
+        )
+        
+        await Promise.all(updatePromises)
+        console.log(`${attendanceDates.length}개 날짜의 근태 마일리지 업데이트 완료`)
+      } else {
+        console.log("근태 기록이 없어 마일리지 업데이트 스킵")
+      }
+    }
+
+    const endTime = Date.now()
+    console.log(`근무표 연차 반영 완료: ${endTime - startTime}ms`)
+    
+    if (skipDates.length > 0) {
+      console.log(`휴무일로 스킵된 날짜: ${skipDates.join(", ")}`)
     }
   }
 
@@ -704,11 +770,12 @@ export class SupabaseLeaveRequestStorage {
     }
   }
 
-  // 근무표 복구 (연차 취소 시 기존 근무표 복원)
+  // 근무표 복구 (연차 취소 시 기존 근무표 복원 - 최적화 버전)
   private async restoreWorkScheduleForLeave(request: LeaveRequest): Promise<{ message?: string }> {
-    console.log("근무표 복구 처리:", request)
+    console.log("근무표 복구 처리 (배치):", request)
+    const startTime = Date.now()
 
-    // 해당 연차 신청으로 대체된 모든 근무표 항목 조회
+    // 1. 해당 연차 신청으로 대체된 모든 근무표 항목 조회
     const { data: schedules, error } = await supabase
       .from("work_schedule_entries")
       .select("id, date, original_work_type_id")
@@ -724,47 +791,95 @@ export class SupabaseLeaveRequestStorage {
       return {}
     }
 
-    const datesWithNoOriginalSchedule: string[] = []
+    console.log(`복구할 근무표: ${schedules.length}건`)
 
-    // 각 날짜별로 원래 근무로 복구
+    // 2. 복구 및 삭제 항목 분류
+    const toRestore: any[] = []
+    const toDelete: any[] = []
+    const datesWithNoOriginalSchedule: string[] = []
+    const allDates: string[] = []
+
     for (const schedule of schedules) {
-      try {
-        if (schedule.original_work_type_id) {
-          // 원래 근무가 있었으면 복구
-          console.log(`${schedule.date}: ${schedule.original_work_type_id}로 복구`)
-          await supabase
-            .from("work_schedule_entries")
-            .update({
-              work_type_id: schedule.original_work_type_id,
-              original_work_type_id: null,
-              replaced_by_leave_id: null
-            })
-            .eq("id", schedule.id)
-          
-          // 근태 기록도 업데이트
-          const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
-          await supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, schedule.date)
-          console.log(`${schedule.date} 근태 기록 업데이트`)
-        } else {
-          // 원래 근무가 없었으면 삭제하고 날짜 기록
-          console.log(`${schedule.date}: 삭제 (원래 없었음)`)
-          datesWithNoOriginalSchedule.push(schedule.date)
-          await supabase
-            .from("work_schedule_entries")
-            .delete()
-            .eq("id", schedule.id)
-          
-          // 근태 기록도 업데이트 (근무표 삭제 반영)
-          const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
-          await supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, schedule.date)
-          console.log(`${schedule.date} 근태 기록 업데이트`)
-        }
-      } catch (error) {
-        console.error(`근무표 복구 오류 (${schedule.date}):`, error)
+      allDates.push(schedule.date)
+      
+      if (schedule.original_work_type_id) {
+        // 원래 근무가 있었으면 복구 대상
+        toRestore.push({
+          id: schedule.id,
+          date: schedule.date,
+          work_type_id: schedule.original_work_type_id
+        })
+      } else {
+        // 원래 근무가 없었으면 삭제 대상
+        toDelete.push(schedule.id)
+        datesWithNoOriginalSchedule.push(schedule.date)
       }
     }
+
+    console.log(`복구 계획: 복구 ${toRestore.length}건, 삭제 ${toDelete.length}건`)
+
+    // 3. 배치 복구 실행
+    if (toRestore.length > 0) {
+      const restorePromises = toRestore.map(item =>
+        supabase
+          .from("work_schedule_entries")
+          .update({
+            work_type_id: item.work_type_id,
+            original_work_type_id: null,
+            replaced_by_leave_id: null
+          })
+          .eq("id", item.id)
+      )
+      
+      await Promise.all(restorePromises)
+      console.log(`${toRestore.length}개 근무표 복구 완료`)
+    }
+
+    // 4. 배치 삭제 실행
+    if (toDelete.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("work_schedule_entries")
+        .delete()
+        .in("id", toDelete)
+      
+      if (deleteError) {
+        console.error("근무표 배치 삭제 오류:", deleteError)
+      } else {
+        console.log(`${toDelete.length}개 근무표 삭제 완료`)
+      }
+    }
+
+    // 5. 근태 레코드 있는 날짜 확인 및 마일리지 업데이트
+    if (allDates.length > 0) {
+      const { data: attendanceRecords, error: attError } = await supabase
+        .from("attendance_records")
+        .select("work_date")
+        .eq("member_id", request.member_id)
+        .in("work_date", allDates)
+      
+      if (!attError && attendanceRecords && attendanceRecords.length > 0) {
+        console.log(`${attendanceRecords.length}개 날짜에 근태 기록 존재, 마일리지 업데이트 필요`)
+        
+        // 근태가 있는 날짜만 마일리지 업데이트 (배치)
+        const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
+        const attendanceDates = attendanceRecords.map(r => r.work_date)
+        
+        // 배치로 처리
+        const updatePromises = attendanceDates.map(date => 
+          supabaseAttendanceStorage.updateAttendanceFromSchedule(request.member_id, date)
+        )
+        
+        await Promise.all(updatePromises)
+        console.log(`${attendanceDates.length}개 날짜의 근태 마일리지 업데이트 완료`)
+      } else {
+        console.log("근태 기록이 없어 마일리지 업데이트 스킵")
+      }
+    }
+
+    const endTime = Date.now()
+    console.log(`근무표 복구 완료: ${endTime - startTime}ms`)
     
-    // 근무표가 없었던 날짜들이 있으면 알림 반환
+    // 6. 근무표가 없었던 날짜들이 있으면 알림 반환
     if (datesWithNoOriginalSchedule.length > 0) {
       const dateList = datesWithNoOriginalSchedule
         .map(date => new Date(date).toLocaleDateString("ko-KR"))
@@ -780,7 +895,6 @@ export class SupabaseLeaveRequestStorage {
       }
     }
     
-    console.log("근무표 복구 완료")
     return {}
   }
 

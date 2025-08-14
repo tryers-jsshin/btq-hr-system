@@ -75,12 +75,7 @@ export function AttendanceUploadDialog({
       setProgress(100)
       setResult(uploadResult)
       
-      // 성공 메시지 표시 후 자동 닫기
-      if (uploadResult.errors.length === 0) {
-        setTimeout(() => {
-          onComplete()
-        }, 2000)
-      }
+      // 자동 닫기 제거 - 사용자가 결과를 확인하고 수동으로 닫도록
     } catch (error) {
       console.error("업로드 오류:", error)
       setError(error instanceof Error ? error.message : "업로드 중 오류가 발생했습니다.")
@@ -232,6 +227,17 @@ export function AttendanceUploadDialog({
           {!result && (
             <Button onClick={handleUpload} disabled={!file || uploading}>
               {uploading ? "업로드 중..." : "업로드"}
+            </Button>
+          )}
+          {result && (
+            <Button 
+              onClick={() => {
+                onComplete()
+                handleClose()
+              }}
+              className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white"
+            >
+              확인 및 새로고침
             </Button>
           )}
         </DialogFooter>

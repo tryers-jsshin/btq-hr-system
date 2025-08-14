@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Calendar, Upload, Download, Trash2, Coins } from "lucide-react"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
+import { cn } from "@/lib/utils"
 import { supabaseAttendanceStorage } from "@/lib/supabase-attendance-storage"
 import { supabaseWorkMileageStorage } from "@/lib/supabase-work-mileage-storage"
 import { supabase } from "@/lib/supabase"
@@ -327,8 +328,29 @@ export default function AllAttendancePage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-[#f3f4f6]">
-                {filteredRecords.map((record) => (
-                  <tr key={record.id} className="hover:bg-[#f7f8f9] transition-colors duration-100">
+                {filteredRecords.map((record) => {
+                  // 근무일인데 출퇴근 누락 체크
+                  const isWorkDay = 
+                    record.scheduled_start_time && 
+                    record.scheduled_end_time &&
+                    !record.is_leave &&
+                    !record.is_holiday;
+                    
+                  const hasMissingAttendance = 
+                    isWorkDay && 
+                    (!record.check_in_time || !record.check_out_time) &&
+                    new Date(record.work_date) < new Date().setHours(0,0,0,0);
+
+                  return (
+                    <tr 
+                      key={record.id} 
+                      className={cn(
+                        "transition-colors duration-100",
+                        hasMissingAttendance 
+                          ? "bg-red-50 hover:bg-red-100" 
+                          : "hover:bg-[#f7f8f9]"
+                      )}
+                    >
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm text-[#0a0b0c]">
                       {format(new Date(record.work_date), "yy.M.d(E)", { locale: ko })}
                     </td>
@@ -437,7 +459,8 @@ export default function AllAttendancePage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
             

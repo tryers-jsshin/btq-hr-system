@@ -66,7 +66,7 @@ export class SupabaseAttendanceStorage {
   
   // ==================== CSV 업로드 및 처리 ====================
   
-  // CSV 데이터 업로드 및 처리
+  // CSV 데이터 업로드 및 처리 (최적화 버전)
   async uploadCsvData(
     snapshotId: string,
     csvRows: AttendanceCsvRow[],
@@ -83,10 +83,16 @@ export class SupabaseAttendanceStorage {
     }
     
     try {
+      const startTime = Date.now()
+      console.log(`[CSV Upload] 최적화된 배치 처리 시작: ${csvRows.length}개 행`)
+      
       // 스냅샷 상태를 processing으로 변경
       await this.updateSnapshotStatus(snapshotId, "processing")
       
-      // 사원번호로 구성원 매핑 생성
+      // ========== 1단계: 필요한 모든 데이터 사전 로드 ==========
+      console.log("[CSV Upload] 1단계: 데이터 사전 로드")
+      
+      // 1-1. 모든 구성원 정보 한 번에 로드
       const { data: members } = await supabase
         .from("members")
         .select("id, employee_number, name")
@@ -95,99 +101,110 @@ export class SupabaseAttendanceStorage {
         members?.map(m => [m.employee_number, { id: m.id, name: m.name }]) || []
       )
       
-      // 각 행 처리
-      console.log(`[CSV Upload] Starting to process ${csvRows.length} rows`)
+      // 1-2. 모든 work_types 정보 한 번에 로드
+      const { data: workTypes } = await supabase
+        .from("work_types")
+        .select("id, name, start_time, end_time, is_leave, is_holiday")
       
+      const workTypeMap = new Map(
+        workTypes?.map(wt => [wt.id, wt]) || []
+      )
+      
+      // 1-3. 날짜 범위 계산
+      const allDates = new Set<string>()
+      const allMemberIds = new Set<string>()
+      
+      csvRows.forEach(row => {
+        const workDate = row.work_date.replace(/\//g, '-')
+        allDates.add(workDate)
+        const memberInfo = memberMap.get(row.employee_number)
+        if (memberInfo) {
+          allMemberIds.add(memberInfo.id)
+        }
+      })
+      
+      // 1-4. 해당 기간의 모든 근무표 한 번에 로드
+      let scheduleMap = new Map<string, any>()
+      if (allMemberIds.size > 0 && allDates.size > 0) {
+        const { data: schedules } = await supabase
+          .from("work_schedule_entries")
+          .select("id, member_id, date, work_type_id, original_work_type_id")
+          .in("member_id", Array.from(allMemberIds))
+          .in("date", Array.from(allDates))
+        
+        schedules?.forEach(s => {
+          const key = `${s.member_id}_${s.date}`
+          scheduleMap.set(key, s)
+        })
+      }
+      
+      // 1-5. 기존 출퇴근 기록 한 번에 로드
+      const { data: existingRecords } = await supabase
+        .from("attendance_records")
+        .select("id, employee_number, work_date, check_in_time, check_out_time, schedule_id, work_type_id, scheduled_start_time, scheduled_end_time")
+        .in("work_date", Array.from(allDates))
+      
+      const existingMap = new Map<string, any>()
+      existingRecords?.forEach(r => {
+        const key = `${r.employee_number}_${r.work_date}`
+        existingMap.set(key, r)
+      })
+      
+      console.log(`[CSV Upload] 데이터 로드 완료: 구성원 ${members?.length}명, 근무유형 ${workTypes?.length}개, 근무표 ${scheduleMap.size}개`)
+      
+      // ========== 2단계: 배치 처리를 위한 데이터 준비 ==========
+      console.log("[CSV Upload] 2단계: 배치 처리 데이터 준비")
+      
+      const toInsert: any[] = []
+      const toUpdate: any[] = []
+      const mileageUpdates: any[] = []
+      
+      // 각 행을 처리하여 배치 데이터 준비
       for (let i = 0; i < csvRows.length; i++) {
         const row = csvRows[i]
         
         try {
-          // 날짜 형식 변환 (YYYY/MM/DD -> YYYY-MM-DD)
+          // 날짜 형식 변환
           const workDate = row.work_date.replace(/\//g, '-')
-          console.log(`[CSV Upload] Processing row ${i + 1}/${csvRows.length}: ${row.employee_number} on ${workDate}`)
           
-          // 구성원 정보 찾기
+          // 구성원 정보 확인
           const memberInfo = memberMap.get(row.employee_number)
           if (!memberInfo) {
-            console.warn(`[CSV Upload] Member not found for employee number: ${row.employee_number}`)
+            console.warn(`[CSV Upload] 구성원 미발견: ${row.employee_number}`)
+            result.errors.push({
+              row: i + 1,
+              employee_number: row.employee_number,
+              error: "등록되지 않은 사원번호"
+            })
+            continue
           }
           
-          // 근무표 정보 조회 (개별 쿼리로 분리)
+          // 근무표 정보 조회 (사전 로드된 데이터에서)
           let scheduleInfo = null
-          let hasSchedule = false // 근무표 존재 여부 플래그
-          if (memberInfo?.id) {
-            // 1. 먼저 work_schedule_entries 조회 (original_work_type_id 포함)
-            const { data: schedule } = await supabase
-              .from("work_schedule_entries")
-              .select("id, work_type_id, original_work_type_id")
-              .eq("member_id", memberInfo.id)
-              .eq("date", workDate)
-              .maybeSingle()
+          let hasSchedule = false
+          
+          const scheduleKey = `${memberInfo.id}_${workDate}`
+          const schedule = scheduleMap.get(scheduleKey)
+          
+          if (schedule && schedule.work_type_id) {
+            hasSchedule = true
+            const workType = workTypeMap.get(schedule.work_type_id)
             
-            if (schedule && schedule.work_type_id) {
-              hasSchedule = true // 근무표가 존재함
-              // 2. work_type 정보 별도 조회
-              const { data: workType } = await supabase
-                .from("work_types")
-                .select("name, start_time, end_time, is_leave, is_holiday")
-                .eq("id", schedule.work_type_id)
-                .single()
+            if (workType && workType.is_leave && schedule.original_work_type_id) {
+              // 휴가 처리
+              const originalWorkType = workTypeMap.get(schedule.original_work_type_id)
               
-              // 휴가 처리 (is_leave가 true인 경우)
-              if (workType && workType.is_leave && schedule.original_work_type_id) {
-                // 원래 근무 유형 조회
-                const { data: originalWorkType } = await supabase
-                  .from("work_types")
-                  .select("start_time, end_time")
-                  .eq("id", schedule.original_work_type_id)
-                  .single()
+              if (originalWorkType) {
+                const leaveStart = this.timeToMinutes(workType.start_time)
+                const leaveEnd = this.timeToMinutes(workType.end_time)
+                const workStart = this.timeToMinutes(originalWorkType.start_time)
+                const workEnd = this.timeToMinutes(originalWorkType.end_time)
                 
-                if (originalWorkType) {
-                  // 스마트한 휴가 시간 계산
-                  const leaveStart = this.timeToMinutes(workType.start_time)
-                  const leaveEnd = this.timeToMinutes(workType.end_time)
-                  const workStart = this.timeToMinutes(originalWorkType.start_time)
-                  const workEnd = this.timeToMinutes(originalWorkType.end_time)
-                  
-                  // 종일 휴가 체크 (00:00 ~ 23:59 또는 전체 근무시간 포함)
-                  const isFullDayLeave = 
-                    (leaveStart === 0 && leaveEnd >= 1439) || // 23:59 = 1439분
-                    (leaveStart <= workStart && leaveEnd >= workEnd)
-                  
-                  if (isFullDayLeave) {
-                    // 종일 휴가
-                    scheduleInfo = {
-                      schedule_id: schedule.id,
-                      work_type_id: schedule.work_type_id,
-                      scheduled_start_time: null,
-                      scheduled_end_time: null,
-                      is_holiday: true
-                    }
-                  } else {
-                    // 부분 휴가: 휴가 시간을 제외한 나머지가 근무 시간
-                    let actualWorkStart = originalWorkType.start_time
-                    let actualWorkEnd = originalWorkType.end_time
-                    
-                    // 휴가가 근무 시작 시간을 포함하면, 휴가 종료 후부터 근무
-                    if (leaveStart <= workStart && leaveEnd > workStart && leaveEnd < workEnd) {
-                      actualWorkStart = workType.end_time
-                    }
-                    // 휴가가 근무 종료 시간을 포함하면, 휴가 시작 전까지 근무
-                    else if (leaveStart > workStart && leaveStart < workEnd && leaveEnd >= workEnd) {
-                      actualWorkEnd = workType.start_time
-                    }
-                    
-                    scheduleInfo = {
-                      schedule_id: schedule.id,
-                      work_type_id: schedule.work_type_id,
-                      scheduled_start_time: actualWorkStart,
-                      scheduled_end_time: actualWorkEnd,
-                      is_holiday: false,
-                      is_partial_leave: true
-                    }
-                  }
-                } else {
-                  // original_work_type을 찾을 수 없는 경우 종일 휴가로 처리
+                const isFullDayLeave = 
+                  (leaveStart === 0 && leaveEnd >= 1439) ||
+                  (leaveStart <= workStart && leaveEnd >= workEnd)
+                
+                if (isFullDayLeave) {
                   scheduleInfo = {
                     schedule_id: schedule.id,
                     work_type_id: schedule.work_type_id,
@@ -195,9 +212,26 @@ export class SupabaseAttendanceStorage {
                     scheduled_end_time: null,
                     is_holiday: true
                   }
+                } else {
+                  let actualWorkStart = originalWorkType.start_time
+                  let actualWorkEnd = originalWorkType.end_time
+                  
+                  if (leaveStart <= workStart && leaveEnd > workStart && leaveEnd < workEnd) {
+                    actualWorkStart = workType.end_time
+                  } else if (leaveStart > workStart && leaveStart < workEnd && leaveEnd >= workEnd) {
+                    actualWorkEnd = workType.start_time
+                  }
+                  
+                  scheduleInfo = {
+                    schedule_id: schedule.id,
+                    work_type_id: schedule.work_type_id,
+                    scheduled_start_time: actualWorkStart,
+                    scheduled_end_time: actualWorkEnd,
+                    is_holiday: false,
+                    is_partial_leave: true
+                  }
                 }
-              } else if (workType && (workType.is_leave || workType.is_holiday || workType.name === "오프")) {
-                // 일반 휴가, 휴무일, 오프인 경우
+              } else {
                 scheduleInfo = {
                   schedule_id: schedule.id,
                   work_type_id: schedule.work_type_id,
@@ -205,15 +239,22 @@ export class SupabaseAttendanceStorage {
                   scheduled_end_time: null,
                   is_holiday: true
                 }
-              } else if (workType) {
-                // 정규 근무일
-                scheduleInfo = {
-                  schedule_id: schedule.id,
-                  work_type_id: schedule.work_type_id,
-                  scheduled_start_time: workType.start_time,
-                  scheduled_end_time: workType.end_time,
-                  is_holiday: false
-                }
+              }
+            } else if (workType && (workType.is_leave || workType.is_holiday)) {
+              scheduleInfo = {
+                schedule_id: schedule.id,
+                work_type_id: schedule.work_type_id,
+                scheduled_start_time: null,
+                scheduled_end_time: null,
+                is_holiday: true
+              }
+            } else if (workType) {
+              scheduleInfo = {
+                schedule_id: schedule.id,
+                work_type_id: schedule.work_type_id,
+                scheduled_start_time: workType.start_time,
+                scheduled_end_time: workType.end_time,
+                is_holiday: false
               }
             }
           }
@@ -239,38 +280,27 @@ export class SupabaseAttendanceStorage {
                   : 0,
               }
           
-          // 기존 레코드 확인
-          let { data: existing, error: existingError } = await supabase
-            .from("attendance_records")
-            .select("id, check_in_time, check_out_time")
-            .eq("employee_number", row.employee_number)
-            .eq("work_date", workDate)
-            .maybeSingle()
+          // 기존 레코드 확인 (사전 로드된 데이터에서)
+          const existingKey = `${row.employee_number}_${workDate}`
+          const existing = existingMap.get(existingKey)
           
-          // 레코드별 처리 상태 추적
-          let recordStatus: 'created' | 'updated' | 'skipped' = 'skipped'
-          let finalMetrics = calculations // 최종 사용할 메트릭
-          
+          // 기존 레코드가 있는지 확인하고 배치 데이터 준비
           if (existing) {
             // 업데이트 정책: 비어있던 셀만 채움
-            const updateData: any = {}
             let hasUpdate = false
+            const updatedCheckIn = !existing.check_in_time && row.check_in_time ? row.check_in_time : existing.check_in_time
+            const updatedCheckOut = !existing.check_out_time && row.check_out_time ? row.check_out_time : existing.check_out_time
             
-            if (!existing.check_in_time && row.check_in_time) {
-              updateData.check_in_time = row.check_in_time
-              hasUpdate = true
-            }
-            if (!existing.check_out_time && row.check_out_time) {
-              updateData.check_out_time = row.check_out_time
+            if ((!existing.check_in_time && row.check_in_time) || (!existing.check_out_time && row.check_out_time)) {
               hasUpdate = true
             }
             
             if (hasUpdate) {
-              // 재계산 - 근무표가 있을 때만
+              // 재계산
               const newCalculations = hasSchedule
                 ? this.calculateAttendanceMetrics(
-                    updateData.check_in_time || existing.check_in_time,
-                    updateData.check_out_time || existing.check_out_time,
+                    updatedCheckIn,
+                    updatedCheckOut,
                     scheduleInfo?.scheduled_start_time,
                     scheduleInfo?.scheduled_end_time,
                     scheduleInfo?.is_holiday
@@ -281,100 +311,85 @@ export class SupabaseAttendanceStorage {
                     is_early_leave: false,
                     early_leave_minutes: 0,
                     overtime_minutes: 0,
-                    actual_work_minutes: (updateData.check_in_time || existing.check_in_time) && 
-                                        (updateData.check_out_time || existing.check_out_time)
-                      ? this.timeToMinutes(updateData.check_out_time || existing.check_out_time) - 
-                        this.timeToMinutes(updateData.check_in_time || existing.check_in_time)
+                    actual_work_minutes: updatedCheckIn && updatedCheckOut
+                      ? this.timeToMinutes(updatedCheckOut) - this.timeToMinutes(updatedCheckIn)
                       : 0,
                   }
               
-              const { error: updateError } = await supabase
-                .from("attendance_records")
-                .update({
-                  ...updateData,
-                  ...newCalculations,
-                  snapshot_id: snapshotId,
-                  // scheduleInfo에서 DB 컬럼만 추가
-                  schedule_id: scheduleInfo?.schedule_id || existing.schedule_id,
-                  work_type_id: scheduleInfo?.work_type_id || existing.work_type_id,
-                  scheduled_start_time: scheduleInfo?.scheduled_start_time !== undefined ? scheduleInfo.scheduled_start_time : existing.scheduled_start_time,
-                  scheduled_end_time: scheduleInfo?.scheduled_end_time !== undefined ? scheduleInfo.scheduled_end_time : existing.scheduled_end_time,
-                })
-                .eq("id", existing.id)
+              // 업데이트 배치에 추가
+              toUpdate.push({
+                id: existing.id,
+                check_in_time: updatedCheckIn,
+                check_out_time: updatedCheckOut,
+                ...newCalculations,
+                snapshot_id: snapshotId,
+                schedule_id: scheduleInfo?.schedule_id || existing.schedule_id,
+                work_type_id: scheduleInfo?.work_type_id || existing.work_type_id,
+                scheduled_start_time: scheduleInfo?.scheduled_start_time !== undefined ? scheduleInfo.scheduled_start_time : existing.scheduled_start_time,
+                scheduled_end_time: scheduleInfo?.scheduled_end_time !== undefined ? scheduleInfo.scheduled_end_time : existing.scheduled_end_time,
+              })
               
-              if (updateError) {
-                console.error(`Failed to update attendance record for ${row.employee_number} on ${workDate}:`, updateError)
-                throw new Error(`근태 기록 업데이트 실패: ${updateError.message}`)
+              // 마일리지 업데이트 준비
+              if (memberInfo?.id && (updatedCheckIn || updatedCheckOut)) {
+                mileageUpdates.push({
+                  member_id: memberInfo.id,
+                  work_date: workDate,
+                  reference_id: existing.id,
+                  late_minutes: newCalculations.late_minutes,
+                  early_leave_minutes: newCalculations.early_leave_minutes,
+                  overtime_minutes: newCalculations.overtime_minutes,
+                })
               }
               
               result.updated_records++
-              recordStatus = 'updated'
-              finalMetrics = newCalculations
             } else {
               result.skipped_records++
-              recordStatus = 'skipped'
             }
           } else {
-            // 새 레코드 생성
-            // scheduleInfo에서 is_holiday와 is_partial_leave 제외
-            const insertData = {
-              snapshot_id: snapshotId,
-              employee_number: row.employee_number,
-              member_id: memberInfo?.id,
-              member_name: row.member_name,
-              work_date: workDate,
-              check_in_time: row.check_in_time || null,
-              check_out_time: row.check_out_time || null,
-              // scheduleInfo에서 DB 컬럼만 추출
-              schedule_id: scheduleInfo?.schedule_id || null,
-              work_type_id: scheduleInfo?.work_type_id || null,
-              scheduled_start_time: scheduleInfo?.scheduled_start_time || null,
-              scheduled_end_time: scheduleInfo?.scheduled_end_time || null,
-              ...calculations,
+            // 새 레코드 생성 준비 - 중복 체크를 위해 키 확인
+            const insertKey = `${row.employee_number}_${workDate}`
+            const alreadyInInsertList = toInsert.some(
+              item => `${item.employee_number}_${item.work_date}` === insertKey
+            )
+            
+            if (!alreadyInInsertList) {
+              const insertData = {
+                snapshot_id: snapshotId,
+                employee_number: row.employee_number,
+                member_id: memberInfo?.id,
+                member_name: row.member_name,
+                work_date: workDate,
+                check_in_time: row.check_in_time || null,
+                check_out_time: row.check_out_time || null,
+                schedule_id: scheduleInfo?.schedule_id || null,
+                work_type_id: scheduleInfo?.work_type_id || null,
+                scheduled_start_time: scheduleInfo?.scheduled_start_time || null,
+                scheduled_end_time: scheduleInfo?.scheduled_end_time || null,
+                ...calculations,
+              }
+              
+              toInsert.push(insertData)
+              
+              // 마일리지 업데이트 준비 (삽입 후 ID를 모르므로 나중에 처리)
+              if (memberInfo?.id && (row.check_in_time || row.check_out_time)) {
+                mileageUpdates.push({
+                  member_id: memberInfo.id,
+                  work_date: workDate,
+                  employee_number: row.employee_number, // ID 대신 사원번호 사용
+                  late_minutes: calculations.late_minutes,
+                  early_leave_minutes: calculations.early_leave_minutes,
+                  overtime_minutes: calculations.overtime_minutes,
+                })
+              }
+              
+              result.new_records++
+            } else {
+              console.warn(`[CSV Upload] 중복된 행 건너뜀: ${row.employee_number} on ${workDate}`)
+              result.skipped_records++
             }
-            
-            const { data: newRecord, error: insertError } = await supabase
-              .from("attendance_records")
-              .insert(insertData)
-              .select()
-              .single()
-            
-            if (insertError) {
-              console.error(`Failed to insert attendance record for ${row.employee_number} on ${workDate}:`, insertError)
-              throw new Error(`근태 기록 생성 실패: ${insertError.message}`)
-            }
-            
-            // 새로 생성된 레코드의 ID를 existing에 할당
-            existing = newRecord
-            result.new_records++
-            recordStatus = 'created'
-            finalMetrics = calculations
-            console.log(`[CSV Upload] Successfully created attendance record: ID=${newRecord.id}`)
           }
           
           result.processed_rows++
-          
-          // 근무 마일리지 생성 (새로 생성되거나 업데이트된 경우만)
-          // 건너뛴 레코드는 마일리지도 업데이트하지 않음
-          if (recordStatus !== 'skipped' && memberInfo?.id && 
-              (row.check_in_time || row.check_out_time)) {
-            const { supabaseWorkMileageStorage } = await import("./supabase-work-mileage-storage")
-            
-            // 기존 레코드 또는 새로 생성된 레코드의 ID 사용
-            const referenceId = existing?.id || undefined
-            
-            // 이벤트 소싱 방식으로 마일리지 동기화
-            // finalMetrics는 이미 적절한 값으로 설정됨 (updated면 재계산된 값, created면 초기 계산값)
-            await supabaseWorkMileageStorage.syncFromAttendance(
-              memberInfo.id,
-              workDate,
-              referenceId,
-              finalMetrics.late_minutes,
-              finalMetrics.early_leave_minutes,
-              finalMetrics.overtime_minutes,
-              'attendance' // CSV 업로드도 attendance source로 처리
-            )
-          }
         } catch (error) {
           result.errors.push({
             row: i + 1,
@@ -383,6 +398,105 @@ export class SupabaseAttendanceStorage {
           })
         }
       }
+      
+      console.log(`[CSV Upload] 배치 데이터 준비 완료: 삽입 ${toInsert.length}건, 업데이트 ${toUpdate.length}건`)
+      
+      // ========== 3단계: 배치 삽입 ==========
+      if (toInsert.length > 0) {
+        console.log(`[CSV Upload] 3단계: ${toInsert.length}건 배치 삽입`)
+        
+        // 청크 단위로 나누어 삽입 (너무 많으면 타임아웃 방지)
+        const chunkSize = 50
+        for (let i = 0; i < toInsert.length; i += chunkSize) {
+          const chunk = toInsert.slice(i, i + chunkSize)
+          
+          // upsert 사용하여 중복 키 오류 방지
+          const { data: insertedRecords, error: insertError } = await supabase
+            .from("attendance_records")
+            .upsert(chunk, {
+              onConflict: 'employee_number,work_date',
+              ignoreDuplicates: false
+            })
+            .select("id, employee_number, work_date")
+          
+          if (insertError) {
+            console.error(`[CSV Upload] 배치 삽입 오류:`, insertError)
+            // 중복 키 오류는 무시하고 계속 진행
+            if (insertError.code !== '23505') {
+              throw new Error(`근태 기록 배치 삽입 실패: ${insertError.message}`)
+            }
+            console.warn(`[CSV Upload] 일부 중복 레코드 건너뜀`)
+          }
+          
+          // 삽입된 레코드의 ID로 마일리지 업데이트 준비
+          insertedRecords?.forEach(record => {
+            const mileageUpdate = mileageUpdates.find(
+              m => m.employee_number === record.employee_number && m.work_date === record.work_date
+            )
+            if (mileageUpdate) {
+              mileageUpdate.reference_id = record.id
+              delete mileageUpdate.employee_number // 사원번호 제거
+            }
+          })
+          
+          console.log(`[CSV Upload] 배치 삽입 진행: ${Math.min(i + chunkSize, toInsert.length)}/${toInsert.length}`)
+        }
+      }
+      
+      // ========== 4단계: 배치 업데이트 ==========
+      if (toUpdate.length > 0) {
+        console.log(`[CSV Upload] 4단계: ${toUpdate.length}건 배치 업데이트`)
+        
+        // 각 레코드별로 업데이트 (배치 업데이트는 Supabase에서 직접 지원 안함)
+        const updatePromises = toUpdate.map(record => {
+          const { id, ...updateData } = record
+          return supabase
+            .from("attendance_records")
+            .update(updateData)
+            .eq("id", id)
+        })
+        
+        // 병렬 처리
+        const chunkSize = 10
+        for (let i = 0; i < updatePromises.length; i += chunkSize) {
+          const chunk = updatePromises.slice(i, i + chunkSize)
+          await Promise.all(chunk)
+          console.log(`[CSV Upload] 배치 업데이트 진행: ${Math.min(i + chunkSize, toUpdate.length)}/${toUpdate.length}`)
+        }
+      }
+      
+      // ========== 5단계: 마일리지 배치 업데이트 ==========
+      if (mileageUpdates.length > 0) {
+        console.log(`[CSV Upload] 5단계: ${mileageUpdates.length}건 마일리지 업데이트`)
+        
+        const { supabaseWorkMileageStorage } = await import("./supabase-work-mileage-storage")
+        
+        // 마일리지 업데이트를 병렬로 처리
+        const mileagePromises = mileageUpdates
+          .filter(m => m.reference_id) // ID가 있는 것만
+          .map(m => 
+            supabaseWorkMileageStorage.syncFromAttendance(
+              m.member_id,
+              m.work_date,
+              m.reference_id,
+              m.late_minutes,
+              m.early_leave_minutes,
+              m.overtime_minutes,
+              'attendance'
+            )
+          )
+        
+        // 청크 단위로 병렬 처리
+        const chunkSize = 10
+        for (let i = 0; i < mileagePromises.length; i += chunkSize) {
+          const chunk = mileagePromises.slice(i, i + chunkSize)
+          await Promise.all(chunk)
+          console.log(`[CSV Upload] 마일리지 업데이트 진행: ${Math.min(i + chunkSize, mileagePromises.length)}/${mileagePromises.length}`)
+        }
+      }
+      
+      const endTime = Date.now()
+      console.log(`[CSV Upload] 최적화된 배치 처리 완료: ${endTime - startTime}ms`)
       
       // 스냅샷 상태 업데이트
       await this.updateSnapshotStatus(
@@ -604,7 +718,7 @@ export class SupabaseAttendanceStorage {
             scheduledEnd = null
           }
         }
-      } else if (workType?.is_leave || workType?.is_holiday || workType?.name === "오프") {
+      } else if (workType?.is_leave || workType?.is_holiday) {
         scheduledStart = null
         scheduledEnd = null
       }
@@ -619,6 +733,7 @@ export class SupabaseAttendanceStorage {
           work_type_bgcolor: workType?.bgcolor,
           work_type_fontcolor: workType?.fontcolor,
           is_leave: workType?.is_leave || false,
+          is_holiday: workType?.is_holiday || false,
           deduction_days: workType?.deduction_days || null,
         })
       } else {
@@ -666,6 +781,7 @@ export class SupabaseAttendanceStorage {
           work_type_bgcolor: workType?.bgcolor,
           work_type_fontcolor: workType?.fontcolor,
           is_leave: workType?.is_leave || false,
+          is_holiday: workType?.is_holiday || false,
           deduction_days: workType?.deduction_days || null,
         }
         
@@ -1138,8 +1254,8 @@ export class SupabaseAttendanceStorage {
       return
     }
     
-    // 일반 휴가, 휴무일, 오프인 경우
-    if (workType?.is_leave || workType?.is_holiday || workType?.name === "오프") {
+    // 일반 휴가, 휴무일인 경우
+    if (workType?.is_leave || workType?.is_holiday) {
       // 휴무일에 출근한 경우 전체 근무시간을 초과근무로 계산
       const calculations = this.calculateAttendanceMetrics(
         attendance.check_in_time,

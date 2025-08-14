@@ -12,6 +12,65 @@ type WorkScheduleEntryDB = Database["public"]["Tables"]["work_schedule_entries"]
 type WorkScheduleEntryInsert = Database["public"]["Tables"]["work_schedule_entries"]["Insert"]
 
 export const supabaseWorkScheduleStorage = {
+  async getMonthlyScheduledDays(memberId: string, yearMonth: string): Promise<number> {
+    const [year, month] = yearMonth.split("-")
+    const startDate = `${yearMonth}-01`
+    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate()
+    const endDate = `${yearMonth}-${lastDay}`
+
+    // 먼저 해당 기간의 work_schedule_entries 가져오기
+    const { data: scheduleData, error: scheduleError } = await supabase
+      .from("work_schedule_entries")
+      .select("date, work_type_id")
+      .eq("member_id", memberId)
+      .gte("date", startDate)
+      .lte("date", endDate)
+
+    if (scheduleError) {
+      console.error("Error fetching schedule entries:", scheduleError)
+      return 0
+    }
+
+    if (!scheduleData || scheduleData.length === 0) {
+      return 0
+    }
+
+    // work_types 정보 가져오기
+    const workTypeIds = [...new Set(scheduleData.map(s => s.work_type_id).filter(Boolean))]
+    const { data: workTypes, error: typesError } = await supabase
+      .from("work_types")
+      .select("id, name, is_leave, is_holiday")
+      .in("id", workTypeIds)
+
+    if (typesError) {
+      console.error("Error fetching work types:", typesError)
+      return 0
+    }
+
+    // work_types를 맵으로 변환
+    const workTypeMap = new Map(workTypes?.map(wt => [wt.id, wt]) || [])
+
+    // 연차와 휴일이 아닌 실제 근무일만 카운트
+    const workDays = scheduleData.filter((entry) => {
+      // pending이나 none은 제외
+      if (!entry.work_type_id || entry.work_type_id === "pending" || entry.work_type_id === "none") {
+        return false
+      }
+      
+      // work_type 정보 확인
+      const workType = workTypeMap.get(entry.work_type_id)
+      
+      // is_leave나 is_holiday가 true인 경우 제외
+      if (workType && (workType.is_leave || workType.is_holiday)) {
+        return false
+      }
+      
+      return true
+    }).length
+
+    return workDays
+  },
+
   async getScheduleEntries(): Promise<WorkScheduleEntry[]> {
     const { data, error } = await supabase.from("work_schedule_entries").select("*").order("date", { ascending: true })
 
@@ -195,6 +254,7 @@ export const supabaseWorkScheduleStorage = {
       // 배치 크기를 줄여서 처리
       const batchSize = 50
       let totalUpdated = 0
+      const allUpdatedInfo = new Map<string, Set<string>>() // date -> memberIds
 
       for (let i = 0; i < entries.length; i += batchSize) {
         const batch = entries.slice(i, i + batchSize)
@@ -221,20 +281,72 @@ export const supabaseWorkScheduleStorage = {
         totalUpdated += data?.length || batch.length
         console.log(`Batch ${Math.floor(i / batchSize) + 1} completed, updated: ${data?.length || batch.length}`)
         
-        // 근태 기록 업데이트 - 각 배치의 날짜별로 업데이트
-        const uniqueDates = [...new Set(batch.map(entry => entry.date))]
-        console.log(`[batchUpdateSchedule] Updating attendance for ${uniqueDates.length} dates:`, uniqueDates)
+        // 업데이트된 날짜와 구성원 정보 수집
+        batch.forEach(entry => {
+          if (!allUpdatedInfo.has(entry.date)) {
+            allUpdatedInfo.set(entry.date, new Set())
+          }
+          allUpdatedInfo.get(entry.date)?.add(entry.member_id)
+        })
+      }
+
+      // 최적화: 근태 기록이 있는 경우만 업데이트
+      console.log(`[Optimization] Checking attendance for ${allUpdatedInfo.size} dates`)
+      
+      // 모든 업데이트된 날짜와 구성원에 대한 근태 기록 조회
+      const allDates = Array.from(allUpdatedInfo.keys())
+      const allMemberIds = Array.from(new Set(
+        Array.from(allUpdatedInfo.values()).flatMap(set => Array.from(set))
+      ))
+      
+      const { data: attendanceRecords } = await supabase
+        .from("attendance_records")
+        .select("work_date, member_id")
+        .in("work_date", allDates)
+        .in("member_id", allMemberIds)
+      
+      if (attendanceRecords && attendanceRecords.length > 0) {
+        // 날짜별로 근태가 있는 구성원 그룹화
+        const attendanceByDate = new Map<string, Set<string>>()
+        attendanceRecords.forEach(record => {
+          if (!attendanceByDate.has(record.work_date)) {
+            attendanceByDate.set(record.work_date, new Set())
+          }
+          attendanceByDate.get(record.work_date)?.add(record.member_id)
+        })
         
-        for (const date of uniqueDates) {
-          try {
-            console.log(`[batchUpdateSchedule] Refreshing attendance for date: ${date}`)
-            const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
-            await supabaseAttendanceStorage.refreshAttendanceForDate(date)
-            console.log(`[batchUpdateSchedule] Successfully refreshed attendance for date: ${date}`)
-          } catch (error) {
-            console.error(`[batchUpdateSchedule] Failed to refresh attendance for date ${date}:`, error)
+        console.log(`[Optimization] Found attendance records on ${attendanceByDate.size} dates`)
+        
+        // 모든 업데이트를 Promise 배열로 준비
+        const updatePromises: Array<() => Promise<void>> = []
+        
+        for (const [date, memberIdsWithAttendance] of attendanceByDate) {
+          const updatedMemberIds = allUpdatedInfo.get(date)
+          if (updatedMemberIds) {
+            // 업데이트된 구성원 중 근태가 있는 구성원만 필터링
+            const membersToUpdate = Array.from(memberIdsWithAttendance).filter(
+              memberId => updatedMemberIds.has(memberId)
+            )
+            
+            if (membersToUpdate.length > 0) {
+              updatePromises.push(() => 
+                this.batchUpdateAttendanceAndMileage(date, membersToUpdate)
+              )
+            }
           }
         }
+        
+        // 청크 단위로 병렬 처리
+        const chunkSize = 5 // 날짜별 처리이므로 청크 크기를 작게
+        console.log(`[Optimization] Processing ${updatePromises.length} date batches in parallel`)
+        
+        for (let i = 0; i < updatePromises.length; i += chunkSize) {
+          const chunk = updatePromises.slice(i, i + chunkSize)
+          await Promise.all(chunk.map(fn => fn()))
+          console.log(`[Optimization] Processed ${Math.min(i + chunkSize, updatePromises.length)}/${updatePromises.length} date batches`)
+        }
+      } else {
+        console.log(`[Optimization] No attendance records found for updated schedules, skipping updates`)
       }
 
       console.log(`Successfully updated ${totalUpdated} schedule entries`)
@@ -381,6 +493,7 @@ export const supabaseWorkScheduleStorage = {
       // 배치 크기를 줄여서 처리 (한 번에 너무 많은 데이터를 처리하지 않도록)
       const batchSize = 100
       let totalCreated = 0
+      const allCreatedDates = new Set<string>()
 
       for (let i = 0; i < entries.length; i += batchSize) {
         const batch = entries.slice(i, i + batchSize)
@@ -404,18 +517,55 @@ export const supabaseWorkScheduleStorage = {
         totalCreated += data?.length || batch.length
         console.log(`Batch completed, created: ${data?.length || batch.length}`)
         
-        // 근태 기록 업데이트 - 생성된 각 날짜에 대해 업데이트
-        const uniqueDates = [...new Set(batch.map(entry => entry.date))]
-        console.log(`Updating attendance for ${uniqueDates.length} dates`)
+        // 생성된 날짜들 수집
+        batch.forEach(entry => allCreatedDates.add(entry.date))
+      }
+
+      // 최적화: 근태 기록이 있는 날짜만 필터링해서 업데이트
+      console.log(`[Optimization] Checking attendance records for ${allCreatedDates.size} dates`)
+      
+      // 해당 기간 내 근태 기록이 있는 날짜와 구성원 조회
+      const { data: attendanceRecords } = await supabase
+        .from("attendance_records")
+        .select("work_date, member_id")
+        .in("member_id", memberIds)
+        .gte("work_date", startDate)
+        .lte("work_date", endDate)
+      
+      if (attendanceRecords && attendanceRecords.length > 0) {
+        // 날짜별로 그룹화
+        const attendanceByDate = new Map<string, Set<string>>()
+        attendanceRecords.forEach(record => {
+          if (!attendanceByDate.has(record.work_date)) {
+            attendanceByDate.set(record.work_date, new Set())
+          }
+          attendanceByDate.get(record.work_date)?.add(record.member_id)
+        })
         
-        for (const date of uniqueDates) {
-          try {
-            const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
-            await supabaseAttendanceStorage.refreshAttendanceForDate(date)
-          } catch (error) {
-            console.error(`Failed to refresh attendance for date ${date}:`, error)
+        console.log(`[Optimization] Found attendance records on ${attendanceByDate.size} dates`)
+        
+        // 모든 업데이트를 Promise 배열로 준비
+        const updatePromises: Array<() => Promise<void>> = []
+        
+        for (const [date, memberIdsWithAttendance] of attendanceByDate) {
+          if (allCreatedDates.has(date)) {
+            updatePromises.push(() => 
+              this.batchUpdateAttendanceAndMileage(date, Array.from(memberIdsWithAttendance))
+            )
           }
         }
+        
+        // 청크 단위로 병렬 처리
+        const chunkSize = 5 // 날짜별 처리이므로 청크 크기를 작게
+        console.log(`[Optimization] Processing ${updatePromises.length} date batches in parallel`)
+        
+        for (let i = 0; i < updatePromises.length; i += chunkSize) {
+          const chunk = updatePromises.slice(i, i + chunkSize)
+          await Promise.all(chunk.map(fn => fn()))
+          console.log(`[Optimization] Processed ${Math.min(i + chunkSize, updatePromises.length)}/${updatePromises.length} date batches`)
+        }
+      } else {
+        console.log(`[Optimization] No attendance records found in the date range, skipping updates`)
       }
 
       console.log(`Successfully created ${totalCreated} schedule entries`)
@@ -435,6 +585,222 @@ export const supabaseWorkScheduleStorage = {
       console.error("Error details:", JSON.stringify(error, null, 2))
       return {created: 0, skippedLeave: 0}
     }
+  },
+
+  // 새로운 배치 업데이트 함수
+  async batchUpdateAttendanceAndMileage(workDate: string, memberIds: string[]): Promise<void> {
+    try {
+      console.log(`[Batch Update] Starting for ${memberIds.length} members on ${workDate}`)
+      
+      // 1. 필요한 데이터 한 번에 조회
+      const [scheduleResult, attendanceResult, workTypeResult] = await Promise.all([
+        // 근무표 조회
+        supabase
+          .from("work_schedule_entries")
+          .select("id, member_id, work_type_id, original_work_type_id")
+          .eq("date", workDate)
+          .in("member_id", memberIds),
+        
+        // 근태 기록 조회
+        supabase
+          .from("attendance_records")
+          .select("*")
+          .eq("work_date", workDate)
+          .in("member_id", memberIds),
+        
+        // 근무 유형 조회
+        supabase
+          .from("work_types")
+          .select("*")
+      ])
+      
+      const schedules = scheduleResult.data || []
+      const attendances = attendanceResult.data || []
+      const workTypes = workTypeResult.data || []
+      
+      // 맵으로 변환 (빠른 조회)
+      const scheduleMap = new Map(schedules.map(s => [s.member_id, s]))
+      const workTypeMap = new Map(workTypes.map(w => [w.id, w]))
+      
+      // 2. 각 근태 기록에 대해 계산
+      const attendanceUpdates = []
+      const mileageUpdates = []
+      
+      for (const attendance of attendances) {
+        const schedule = scheduleMap.get(attendance.member_id)
+        if (!schedule) continue
+        
+        const workType = workTypeMap.get(schedule.work_type_id)
+        if (!workType) continue
+        
+        // 근무 시간 계산 (휴가 처리 포함)
+        let scheduledStart = workType.start_time
+        let scheduledEnd = workType.end_time
+        let isHoliday = workType.is_holiday || workType.is_leave || workType.name === "오프"
+        
+        // 반차 처리
+        if (workType.is_leave && schedule.original_work_type_id) {
+          const originalWorkType = workTypeMap.get(schedule.original_work_type_id)
+          if (originalWorkType) {
+            // 스마트한 휴가 시간 계산
+            const leaveStart = this.timeToMinutes(workType.start_time)
+            const leaveEnd = this.timeToMinutes(workType.end_time)
+            const workStart = this.timeToMinutes(originalWorkType.start_time)
+            const workEnd = this.timeToMinutes(originalWorkType.end_time)
+            
+            const isFullDayLeave = 
+              (leaveStart === 0 && leaveEnd >= 1439) || 
+              (leaveStart <= workStart && leaveEnd >= workEnd)
+            
+            if (!isFullDayLeave) {
+              if (leaveStart <= workStart && leaveEnd > workStart && leaveEnd < workEnd) {
+                scheduledStart = workType.end_time
+                scheduledEnd = originalWorkType.end_time
+                isHoliday = false
+              } else if (leaveStart > workStart && leaveStart < workEnd && leaveEnd >= workEnd) {
+                scheduledStart = originalWorkType.start_time
+                scheduledEnd = workType.start_time
+                isHoliday = false
+              }
+            }
+          }
+        }
+        
+        // 지각, 조기퇴근, 초과근무 계산
+        const metrics = this.calculateAttendanceMetrics(
+          attendance.check_in_time,
+          attendance.check_out_time,
+          scheduledStart,
+          scheduledEnd,
+          isHoliday
+        )
+        
+        // 근태 업데이트 데이터 준비
+        attendanceUpdates.push({
+          id: attendance.id,
+          schedule_id: schedule.id,
+          work_type_id: schedule.work_type_id,
+          scheduled_start_time: isHoliday ? null : scheduledStart,
+          scheduled_end_time: isHoliday ? null : scheduledEnd,
+          is_late: metrics.is_late,
+          late_minutes: metrics.late_minutes,
+          is_early_leave: metrics.is_early_leave,
+          early_leave_minutes: metrics.early_leave_minutes,
+          overtime_minutes: metrics.overtime_minutes,
+          actual_work_minutes: metrics.actual_work_minutes
+        })
+        
+        // 마일리지 업데이트 데이터 준비
+        mileageUpdates.push({
+          memberId: attendance.member_id,
+          attendanceId: attendance.id,
+          lateMinutes: metrics.late_minutes,
+          earlyLeaveMinutes: metrics.early_leave_minutes,
+          overtimeMinutes: metrics.overtime_minutes
+        })
+      }
+      
+      // 3. 진짜 배치로 업데이트 (병렬 처리)
+      if (attendanceUpdates.length > 0) {
+        console.log(`[Batch Update] Updating ${attendanceUpdates.length} attendance records`)
+        
+        // 근태 기록 병렬 업데이트 (청크 단위)
+        const chunkSize = 10
+        for (let i = 0; i < attendanceUpdates.length; i += chunkSize) {
+          const chunk = attendanceUpdates.slice(i, i + chunkSize)
+          const updatePromises = chunk.map(update => {
+            const { id, ...updateData } = update
+            return supabase
+              .from("attendance_records")
+              .update(updateData)
+              .eq("id", id)
+          })
+          
+          await Promise.all(updatePromises)
+          console.log(`[Batch Update] Attendance updated: ${Math.min(i + chunkSize, attendanceUpdates.length)}/${attendanceUpdates.length}`)
+        }
+        
+        // 마일리지 병렬 업데이트
+        const { supabaseWorkMileageStorage } = await import("./supabase-work-mileage-storage")
+        
+        for (let i = 0; i < mileageUpdates.length; i += chunkSize) {
+          const chunk = mileageUpdates.slice(i, i + chunkSize)
+          const mileagePromises = chunk.map(mileage => 
+            supabaseWorkMileageStorage.syncFromAttendance(
+              mileage.memberId,
+              workDate,
+              mileage.attendanceId,
+              mileage.lateMinutes,
+              mileage.earlyLeaveMinutes,
+              mileage.overtimeMinutes,
+              'schedule'
+            )
+          )
+          
+          await Promise.all(mileagePromises)
+          console.log(`[Batch Update] Mileage updated: ${Math.min(i + chunkSize, mileageUpdates.length)}/${mileageUpdates.length}`)
+        }
+        
+        console.log(`[Batch Update] Completed for ${workDate}`)
+      }
+    } catch (error) {
+      console.error(`[Batch Update] Error for date ${workDate}:`, error)
+    }
+  },
+
+  // 시간 문자열을 분 단위로 변환 (헬퍼 함수)
+  timeToMinutes(time: string | null | undefined): number {
+    if (!time) return 0
+    const [hours, minutes] = time.split(':').map(Number)
+    return hours * 60 + minutes
+  },
+
+  // 근태 메트릭 계산 (헬퍼 함수)
+  calculateAttendanceMetrics(
+    checkIn: string | null,
+    checkOut: string | null,
+    scheduledStart: string | null,
+    scheduledEnd: string | null,
+    isHoliday: boolean
+  ) {
+    const result = {
+      is_late: false,
+      late_minutes: 0,
+      is_early_leave: false,
+      early_leave_minutes: 0,
+      overtime_minutes: 0,
+      actual_work_minutes: 0,
+    }
+    
+    if (!checkIn || !checkOut) return result
+    
+    const checkInTime = this.timeToMinutes(checkIn)
+    const checkOutTime = this.timeToMinutes(checkOut)
+    result.actual_work_minutes = checkOutTime - checkInTime
+    
+    if (isHoliday || !scheduledStart || !scheduledEnd) {
+      result.overtime_minutes = result.actual_work_minutes
+      return result
+    }
+    
+    const scheduledStartTime = this.timeToMinutes(scheduledStart)
+    const scheduledEndTime = this.timeToMinutes(scheduledEnd)
+    
+    if (checkInTime > scheduledStartTime) {
+      result.is_late = true
+      result.late_minutes = checkInTime - scheduledStartTime
+    }
+    
+    if (checkOutTime < scheduledEndTime) {
+      result.is_early_leave = true
+      result.early_leave_minutes = scheduledEndTime - checkOutTime
+    }
+    
+    if (checkOutTime > scheduledEndTime) {
+      result.overtime_minutes = checkOutTime - scheduledEndTime
+    }
+    
+    return result
   },
 
   async bulkDeleteSchedule(memberIds: string[], startDate: string, endDate: string): Promise<{deleted: number, protectedLeave: number}> {
@@ -487,6 +853,8 @@ export const supabaseWorkScheduleStorage = {
 
       // 삭제하기 전에 관련 근태 기록의 schedule_id를 null로 업데이트
       const regularEntryIds = regularEntries.map(entry => entry.id)
+      const deletedDates = [...new Set(regularEntries.map(entry => entry.date))]
+      const deletedMemberIds = [...new Set(regularEntries.map(entry => entry.member_id))]
       
       console.log("Updating attendance records to remove schedule references...")
       const { error: updateAttendanceError } = await supabase
@@ -522,17 +890,69 @@ export const supabaseWorkScheduleStorage = {
         throw deleteError
       }
 
-      // 삭제된 근무표의 날짜들에 대해 마일리지 동기화
-      const deletedDates = [...new Set(regularEntries.map(entry => entry.date))]
-      console.log(`Syncing mileage for ${deletedDates.length} dates after deletion`)
+      // 최적화: 삭제된 근무표와 관련된 근태 기록이 있는 경우만 마일리지 업데이트
+      console.log(`[Optimization] Checking affected attendance records for ${deletedDates.length} dates`)
       
-      for (const date of deletedDates) {
-        try {
-          const { supabaseAttendanceStorage } = await import("./supabase-attendance-storage")
-          await supabaseAttendanceStorage.refreshAttendanceForDate(date)
-        } catch (error) {
-          console.error(`Failed to refresh attendance for date ${date}:`, error)
+      // 삭제된 날짜와 구성원에 해당하는 근태 기록 조회
+      const { data: affectedAttendance } = await supabase
+        .from("attendance_records")
+        .select("id, member_id, work_date")
+        .in("member_id", deletedMemberIds)
+        .in("work_date", deletedDates)
+      
+      if (affectedAttendance && affectedAttendance.length > 0) {
+        console.log(`[Optimization] Found ${affectedAttendance.length} attendance records affected by deletion`)
+        
+        // 마일리지를 0으로 설정 (근무표가 삭제되었으므로)
+        const { supabaseWorkMileageStorage } = await import("./supabase-work-mileage-storage")
+        
+        // 날짜별로 그룹화
+        const attendanceByDate = new Map<string, Array<{id: string, member_id: string}>>()
+        affectedAttendance.forEach(record => {
+          if (!attendanceByDate.has(record.work_date)) {
+            attendanceByDate.set(record.work_date, [])
+          }
+          attendanceByDate.get(record.work_date)?.push({
+            id: record.id,
+            member_id: record.member_id
+          })
+        })
+        
+        // 배치로 마일리지 초기화 (병렬 처리)
+        const allMileageUpdates: Array<() => Promise<any>> = []
+        
+        for (const [date, records] of attendanceByDate) {
+          console.log(`[Optimization] Preparing mileage reset for ${records.length} members on ${date}`)
+          
+          for (const record of records) {
+            // 마일리지 업데이트 Promise 준비
+            allMileageUpdates.push(() => 
+              supabaseWorkMileageStorage.syncFromAttendance(
+                record.member_id,
+                date,
+                record.id,
+                0,  // late_minutes
+                0,  // early_leave_minutes
+                0,  // overtime_minutes
+                'schedule'  // source
+              )
+            )
+          }
         }
+        
+        // 청크 단위로 병렬 처리
+        const chunkSize = 10
+        console.log(`[Optimization] Processing ${allMileageUpdates.length} mileage updates in chunks`)
+        
+        for (let i = 0; i < allMileageUpdates.length; i += chunkSize) {
+          const chunk = allMileageUpdates.slice(i, i + chunkSize)
+          await Promise.all(chunk.map(fn => fn()))
+          console.log(`[Optimization] Mileage reset progress: ${Math.min(i + chunkSize, allMileageUpdates.length)}/${allMileageUpdates.length}`)
+        }
+        
+        console.log(`[Optimization] Completed mileage reset for affected attendance records`)
+      } else {
+        console.log(`[Optimization] No attendance records affected by deletion, skipping mileage updates`)
       }
       
       console.log(`Successfully deleted ${regularEntries.length} schedule entries`)

@@ -88,6 +88,7 @@ export interface AttendanceDetail extends AttendanceRecord {
   team_name?: string
   // 휴가 관련 정보
   is_leave?: boolean
+  is_holiday?: boolean
   deduction_days?: number | null
 }
 

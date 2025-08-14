@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, ChevronRight, Calendar, Settings } from "lucide-react"
+import { ChevronLeft, ChevronRight, Calendar, Settings, RotateCcw } from "lucide-react"
 import { supabaseWorkScheduleStorage } from "@/lib/supabase-work-schedule-storage"
 import { supabaseAuthStorage } from "@/lib/supabase-auth-storage"
 import type { Database } from "@/types/database"
@@ -206,34 +206,45 @@ export default function WorkSchedule() {
                 size="sm" 
                 onClick={handlePreviousWeek}
                 className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] h-8 w-8 p-0"
+                title="이전 주"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="text-sm sm:text-base font-semibold text-[#0a0b0c]">
+              
+              <div className="text-sm sm:text-base font-semibold text-[#0a0b0c] min-w-[140px] text-center">
                 {formatDateRange(weeklySchedule.weekStart, weeklySchedule.weekEnd)}
               </div>
+              
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={handleNextWeek}
                 className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb] h-8 w-8 p-0"
+                title="다음 주"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              {!isCurrentWeek() && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
+              
+              <Button
+                variant={isCurrentWeek() ? "ghost" : "outline"}
+                size="sm"
+                onClick={async () => {
+                  if (!isCurrentWeek()) {
                     const today = supabaseWorkScheduleStorage.getCurrentWeekStart()
                     setCurrentWeekStart(today)
                     await loadWeeklySchedule(today)
-                  }}
-                  className="border-[#f3f4f6] text-[#5e6ad2] hover:bg-[#fafbfb] h-8 px-3"
-                >
-                  오늘
-                </Button>
-              )}
+                  }
+                }}
+                className={
+                  isCurrentWeek() 
+                    ? "h-8 w-8 p-0 text-[#a0aec0] cursor-default hover:bg-transparent" 
+                    : "border-[#f3f4f6] text-[#5e6ad2] hover:bg-[#fafbfb] h-8 w-8 p-0"
+                }
+                disabled={isCurrentWeek()}
+                title={isCurrentWeek() ? "현재 주" : "오늘이 포함된 주로 이동"}
+              >
+                <RotateCcw className={isCurrentWeek() ? "h-4 w-4" : "h-4 w-4"} />
+              </Button>
             </div>
           </div>
         </div>

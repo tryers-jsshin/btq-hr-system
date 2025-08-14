@@ -5,11 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Calendar, Clock, Download, TrendingUp, TrendingDown } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { Calendar, Clock, Download, TrendingUp, TrendingDown, Target } from "lucide-react"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
+import { cn } from "@/lib/utils"
 import { supabaseAttendanceStorage } from "@/lib/supabase-attendance-storage"
 import { supabaseWorkMileageStorage } from "@/lib/supabase-work-mileage-storage"
+import { supabaseWorkScheduleStorage } from "@/lib/supabase-work-schedule-storage"
 import { supabase } from "@/lib/supabase"
 import { CsvParser } from "@/lib/csv-parser"
 import type { AttendanceDetail, AttendanceSummary, AttendanceFilter } from "@/types/attendance"
@@ -26,6 +29,7 @@ export default function MyAttendancePage() {
   const [monthlySummary, setMonthlySummary] = useState<AttendanceSummary | null>(null)
   const [mileageSummary, setMileageSummary] = useState<MileageSummary | null>(null)
   const [mileageDetail, setMileageDetail] = useState<{ total: number; workBased: number; adminAdjust: number } | null>(null)
+  const [scheduledDays, setScheduledDays] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState(
     format(new Date(), "yyyy-MM")
@@ -112,6 +116,13 @@ export default function MyAttendancePage() {
         currentUser.id
       )
       setMileageDetail(detail)
+      
+      // 근무표에 등록된 근무 예정일수
+      const scheduled = await supabaseWorkScheduleStorage.getMonthlyScheduledDays(
+        currentUser.id,
+        selectedMonth
+      )
+      setScheduledDays(scheduled)
     } catch (error) {
       console.error("근태 데이터 로드 오류:", error)
     } finally {
@@ -218,7 +229,11 @@ export default function MyAttendancePage() {
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4">
               <Card className="bg-white border-[#f3f4f6] shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-[#0a0b0c]">{monthlySummary.work_days}</div>
+                  <div className="flex items-baseline justify-center gap-1">
+                    <span className="text-2xl font-bold text-[#0a0b0c]">{monthlySummary.work_days}</span>
+                    <span className="text-lg text-[#a0aec0]">/</span>
+                    <span className="text-lg text-[#718096]">{scheduledDays}</span>
+                  </div>
                   <div className="text-sm text-[#718096]">{parseInt(selectedMonth.split('-')[1])}월 근무일수</div>
                 </CardContent>
               </Card>
@@ -314,8 +329,29 @@ export default function MyAttendancePage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-[#f3f4f6]">
-                {attendanceRecords.map((record) => (
-                  <tr key={record.id} className="hover:bg-[#f7f8f9] transition-colors duration-100">
+                {attendanceRecords.map((record) => {
+                  // 근무일인데 출퇴근 누락 체크
+                  const isWorkDay = 
+                    record.scheduled_start_time && 
+                    record.scheduled_end_time &&
+                    !record.is_leave &&
+                    !record.is_holiday;
+                    
+                  const hasMissingAttendance = 
+                    isWorkDay && 
+                    (!record.check_in_time || !record.check_out_time) &&
+                    new Date(record.work_date) < new Date().setHours(0,0,0,0);
+
+                  return (
+                    <tr 
+                      key={record.id} 
+                      className={cn(
+                        "transition-colors duration-100",
+                        hasMissingAttendance 
+                          ? "bg-red-50 hover:bg-red-100" 
+                          : "hover:bg-[#f7f8f9]"
+                      )}
+                    >
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm text-[#0a0b0c]">
                       {format(new Date(record.work_date), "yy.M.d(E)", { locale: ko })}
                     </td>
@@ -381,7 +417,8 @@ export default function MyAttendancePage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
             
