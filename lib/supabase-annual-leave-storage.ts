@@ -73,12 +73,12 @@ export const supabaseAnnualLeaveStorage = {
   async getAllActiveMemberBalances(): Promise<AnnualLeaveBalance[]> {
     console.log("모든 활성 구성원의 연차 현황 조회 시작")
 
-    // 활성 구성원 목록 조회
+    // 활성 구성원 목록 조회 (사번 포함)
     const { data: members, error: membersError } = await supabase
       .from("members")
-      .select("id, name, team_name, join_date")
+      .select("id, name, employee_number, team_name, join_date")
       .eq("status", "active")
-      .order("name")
+      .order("employee_number")
 
     if (membersError) {
       console.error("활성 구성원 조회 오류:", membersError)
@@ -104,14 +104,19 @@ export const supabaseAnnualLeaveStorage = {
         .single()
 
       if (existingBalance) {
-        // 기존 잔액이 있는 경우
-        balances.push(existingBalance as AnnualLeaveBalance)
+        // 기존 잔액이 있는 경우 (사번 정보 추가)
+        const balanceWithEmployeeNumber = {
+          ...existingBalance,
+          employee_number: member.employee_number,
+        } as AnnualLeaveBalance
+        balances.push(balanceWithEmployeeNumber)
       } else {
         // 기존 잔액이 없는 경우 기본 잔액 생성
         const defaultBalance: AnnualLeaveBalance = {
           id: `temp_${member.id}`, // 임시 ID
           member_id: member.id,
           member_name: member.name,
+          employee_number: member.employee_number, // 사번 추가
           team_name: member.team_name || "",
           join_date: member.join_date,
           total_granted: 0,

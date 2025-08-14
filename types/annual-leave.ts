@@ -2,6 +2,7 @@ export interface AnnualLeaveBalance {
   id: string
   member_id: string
   member_name: string
+  employee_number?: string // 사번 추가
   team_name: string
   join_date: string
   total_granted: number // 총 부여된 연차

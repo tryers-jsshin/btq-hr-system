@@ -447,18 +447,18 @@ export function MemberFormDialog({ open, onOpenChange, member, onSave }: MemberF
           </div>
 
           {/* Footer */}
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="flex flex-row justify-between gap-2">
             <Button 
               type="button" 
               variant="outline" 
               onClick={() => onOpenChange(false)}
-              className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb]"
+              className="flex-1 border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb]"
             >
               취소
             </Button>
             <Button 
               type="submit"
-              className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white"
+              className="flex-1 bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white"
             >
               {member ? "변경사항 저장" : "구성원 등록"}
             </Button>

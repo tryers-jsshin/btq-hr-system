@@ -2,13 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Calendar, Settings, Play, RefreshCw, AlertTriangle, Clock, Eye } from "lucide-react"
+import { Play, RefreshCw, AlertTriangle, Clock, Eye } from "lucide-react"
 import { AnnualLeavePolicyFormDialog } from "@/components/annual-leave-policy-form-dialog"
 import { AnnualLeavePolicyViewDialog } from "@/components/annual-leave-policy-view-dialog"
-import { AnnualLeaveBalanceCard } from "@/components/annual-leave-balance-card"
 import { AnnualLeaveHistoryDialog } from "@/components/annual-leave-history-dialog"
 import { AnnualLeaveAdjustDialog } from "@/components/annual-leave-adjust-dialog"
 import { AnnualLeaveGrantCancelDialog } from "@/components/annual-leave-grant-cancel-dialog"
@@ -355,124 +352,201 @@ export default function AnnualLeavePage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">연차 관리</h1>
-            <p className="text-gray-600">연차 정책 및 구성원별 연차 현황을 관리합니다</p>
+      <div className="min-h-screen bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+          <div className="mb-6 sm:mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">연차 관리</h1>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center justify-center h-64">
-          <p className="text-gray-500">로딩 중...</p>
+          <div className="flex items-center justify-center h-64">
+            <p className="text-[#718096]">로딩 중...</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-            <Calendar className="h-6 w-6 mr-2" />
-            연차 관리
-          </h1>
-          <p className="text-gray-600">연차 정책 및 구성원별 연차 현황을 관리합니다</p>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-[#0a0b0c]">연차 관리</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setPolicyViewDialogOpen(true)}
+                disabled={!activePolicy}
+                className="border-[#f3f4f6] text-[#4a5568] hover:bg-[#fafbfb]"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                연차 정책 보기
+              </Button>
+              <Button onClick={handleRunUpdate} disabled={updating} className="bg-[#5e6ad2] hover:bg-[#4e5ac2] text-white">
+                {updating ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                수동 업데이트
+              </Button>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => setPolicyViewDialogOpen(true)}
-            disabled={!activePolicy}
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            연차 정책 보기
-          </Button>
-          <Button onClick={handleRunUpdate} disabled={updating}>
-            {updating ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-            수동 업데이트
-          </Button>
+
+        {/* 활성 정책이 없을 때만 경고 표시 */}
+        {!activePolicy && (
+          <Alert className="mb-6 bg-[#fef3c7] border-[#fbbf24]">
+            <AlertTriangle className="h-4 w-4 text-[#d97706]" />
+            <AlertDescription className="text-[#92400e]">활성화된 연차 정책이 없습니다.</AlertDescription>
+          </Alert>
+        )}
+
+        {/* 구성원별 연차 현황 - 테이블 뷰 */}
+        <div className="bg-white rounded-lg border border-[#f3f4f6] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-[#fafbfb] border-b border-[#f3f4f6]">
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    이름
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    사번
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    팀
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    잔여
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    부여
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    사용
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    소멸
+                  </th>
+                  <th className="text-center px-3 sm:px-6 py-3 text-xs font-semibold text-[#4a5568] uppercase tracking-wider whitespace-nowrap">
+                    액션
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-[#f3f4f6]">
+                {balances.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center">
+                      <Clock className="h-12 w-12 text-[#718096] mx-auto mb-4" />
+                      <p className="text-[#4a5568] mb-2">활성 구성원이 없습니다.</p>
+                      <p className="text-sm text-[#718096]">구성원을 추가한 후 다시 확인해주세요.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  balances.map((balance) => (
+                    <tr key={balance.member_id} className="hover:bg-[#f7f8f9] transition-colors duration-100">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                        <div className="text-sm font-medium text-[#0a0b0c]">{balance.member_name}</div>
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                        <span className="text-sm text-[#4a5568]">{balance.employee_number || '-'}</span>
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                        <span className="text-sm text-[#4a5568]">{balance.team_name || '팀 미지정'}</span>
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                        <span className="text-sm font-semibold text-[#5e6ad2]">{balance.current_balance}일</span>
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                        <span className="text-sm text-[#4a5568]">{balance.total_granted}일</span>
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                        <span className="text-sm text-[#4a5568]">{balance.total_used}일</span>
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                        <span className="text-sm text-[#4a5568]">{balance.total_expired}일</span>
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setViewingBalance(balance)
+                              setHistoryDialogOpen(true)
+                            }}
+                            className="h-8 px-2 text-[#4a5568] hover:text-[#0a0b0c] hover:bg-[#fafbfb]"
+                          >
+                            내역
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setAdjustingBalance(balance)
+                              setAdjustType("grant")
+                              setAdjustDialogOpen(true)
+                            }}
+                            className="h-8 px-2 text-[#16a34a] hover:text-[#15803d] hover:bg-[#f0fdf4]"
+                          >
+                            부여
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setAdjustingBalance(balance)
+                              setAdjustType("expire")
+                              setGrantCancelDialogOpen(true)
+                            }}
+                            className="h-8 px-2 text-[#dc2626] hover:text-[#b91c1c] hover:bg-[#fef2f2]"
+                          >
+                            차감
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        {/* 다이얼로그들 */}
+        <AnnualLeavePolicyFormDialog
+          open={policyDialogOpen}
+          onOpenChange={setPolicyDialogOpen}
+          policy={editingPolicy}
+          onSave={handleSavePolicy}
+        />
+
+        <AnnualLeavePolicyViewDialog
+          open={policyViewDialogOpen}
+          onOpenChange={setPolicyViewDialogOpen}
+          policy={activePolicy || null}
+        />
+
+        <AnnualLeaveHistoryDialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen} balance={viewingBalance} />
+
+        <AnnualLeaveAdjustDialog
+          open={adjustDialogOpen}
+          onOpenChange={setAdjustDialogOpen}
+          balance={adjustingBalance}
+          adjustType={adjustType}
+          onSave={handleAdjustBalance}
+        />
+
+        <AnnualLeaveGrantCancelDialog
+          open={grantCancelDialogOpen}
+          onOpenChange={setGrantCancelDialogOpen}
+          balance={adjustingBalance}
+          onSave={handleGrantCancel}
+        />
       </div>
-
-      {/* 활성 정책이 없을 때만 경고 표시 */}
-      {!activePolicy && (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>활성화된 연차 정책이 없습니다.</AlertDescription>
-        </Alert>
-      )}
-
-      {/* 구성원별 연차 현황 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>구성원별 연차 현황 ({balances.length}명)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {balances.length === 0 ? (
-            <div className="text-center py-8">
-              <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 mb-4">활성 구성원이 없습니다.</p>
-              <p className="text-sm text-gray-400">구성원을 추가한 후 다시 확인해주세요.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {balances.map((balance) => (
-                <AnnualLeaveBalanceCard
-                  key={balance.member_id}
-                  balance={balance}
-                  onViewHistory={(balance) => {
-                    setViewingBalance(balance)
-                    setHistoryDialogOpen(true)
-                  }}
-                  onAdjust={(balance, type) => {
-                    setAdjustingBalance(balance)
-                    setAdjustType(type)
-                    if (type === "expire") {
-                      // 차감의 경우 부여 취소 다이얼로그 사용
-                      setGrantCancelDialogOpen(true)
-                    } else {
-                      // 부여의 경우 기존 다이얼로그 사용
-                      setAdjustDialogOpen(true)
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 다이얼로그들 */}
-      <AnnualLeavePolicyFormDialog
-        open={policyDialogOpen}
-        onOpenChange={setPolicyDialogOpen}
-        policy={editingPolicy}
-        onSave={handleSavePolicy}
-      />
-
-      <AnnualLeavePolicyViewDialog
-        open={policyViewDialogOpen}
-        onOpenChange={setPolicyViewDialogOpen}
-        policy={activePolicy || null}
-      />
-
-      <AnnualLeaveHistoryDialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen} balance={viewingBalance} />
-
-      <AnnualLeaveAdjustDialog
-        open={adjustDialogOpen}
-        onOpenChange={setAdjustDialogOpen}
-        balance={adjustingBalance}
-        adjustType={adjustType}
-        onSave={handleAdjustBalance}
-      />
-
-      <AnnualLeaveGrantCancelDialog
-        open={grantCancelDialogOpen}
-        onOpenChange={setGrantCancelDialogOpen}
-        balance={adjustingBalance}
-        onSave={handleGrantCancel}
-      />
     </div>
   )
 }
