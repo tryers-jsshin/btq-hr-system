@@ -155,6 +155,35 @@ const menuItems = [
       },
     ],
   },
+  // 일반 직원용 간소화 메뉴 (하위 메뉴가 1개인 경우 직접 링크)
+  {
+    title: "근무표 조회",
+    href: "/work-schedule",
+    icon: Calendar,
+    roles: ["일반직원"],
+    hideWhenAdmin: true, // 관리자일 때는 숨김
+  },
+  {
+    title: "연차 신청",
+    href: "/leave-request",
+    icon: FileText,
+    roles: ["일반직원"],
+    hideWhenAdmin: true,
+  },
+  {
+    title: "나의 근태",
+    href: "/attendance/my",
+    icon: ClipboardList,
+    roles: ["일반직원"],
+    hideWhenAdmin: true,
+  },
+  {
+    title: "비밀번호 변경",
+    href: "/settings/password",
+    icon: KeyRound,
+    roles: ["일반직원"],
+    hideWhenAdmin: true,
+  },
 ]
 
 export function Sidebar() {
@@ -246,6 +275,19 @@ export function Sidebar() {
           // 메뉴 접근 권한 확인
           if (!hasAccess(item.roles)) {
             return null
+          }
+
+          // 관리자일 때 일반직원 간소화 메뉴는 숨김
+          if (item.hideWhenAdmin && currentUser?.role === '관리자') {
+            return null
+          }
+
+          // 일반 직원일 때 하위 메뉴가 1개뿐인 메뉴는 숨김 (간소화 메뉴 사용)
+          if (currentUser?.role !== '관리자' && item.children) {
+            const accessibleChildren = item.children.filter((child) => hasAccess(child.roles))
+            if (accessibleChildren.length === 1) {
+              return null // 간소화된 메뉴로 대체됨
+            }
           }
 
           if (item.children) {

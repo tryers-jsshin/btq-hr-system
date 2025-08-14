@@ -61,11 +61,6 @@ export default function Dashboard() {
               <h2 className="text-xl font-semibold mb-2">
                 {currentUser?.name || '사용자'}님! 👋
               </h2>
-              {currentUser?.role !== '관리자' && (
-                <p className="text-white/90">
-                  {currentUser?.team_name || '팀 미지정'}
-                </p>
-              )}
             </div>
             <div className="hidden sm:block">
               <Clock className="h-12 w-12 text-white/20" />
