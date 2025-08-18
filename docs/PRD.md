@@ -1,7 +1,7 @@
 # BTQ HR 시스템 - Product Requirements Document (PRD)
 
-> 최종 업데이트: 2025-08-13
-> **최근 변경사항**: 모바일 우선 UI 전면 리디자인 및 Linear Light 테마 완성 적용
+> 최종 업데이트: 2025-08-14
+> **최근 변경사항**: 퇴사자 관리 시스템 완성 및 일반직원용 메뉴 간소화 구현
 
 ## 1. 시스템 개요
 
@@ -244,9 +244,13 @@ BTQ HR 시스템은 중소기업을 위한 종합적인 인사 관리 솔루션�
 
 ## 5. 주요 컴포넌트
 
-### 레이아웃 컴포넌트 **[2025-08-13 모바일 최적화 완료]**
+### 레이아웃 컴포넌트 **[2025-08-14 일반직원 메뉴 간소화 완료]**
 - `Sidebar` - 데스크탑 사이드바 네비게이션 (lg:768px+ 표시)
+  - **[2025-08-14 개선]** 일반직원용 단일 하위메뉴 직접 링크 변환
+  - 하위 메뉴가 1개뿐인 경우 Collapsible 제거하고 직접 링크로 표시
 - `MobileNav` - **[신규]** 모바일 전용 Sheet 네비게이션 (햄버거 메뉴)
+  - **[2025-08-14 개선]** 일반직원용 간소화 메뉴 적용
+  - `hideWhenAdmin` 속성으로 관리자/일반직원 메뉴 분리
 - `ConditionalLayout` - 반응형 조건부 레이아웃 (lg:768px 기준 자동 전환)
 - `RouteGuard` - 라우트 보호 및 인증 검증
 - **통합 브레이크포인트**: md:768px를 핵심 기준점으로 활용
@@ -260,9 +264,15 @@ BTQ HR 시스템은 중소기업을 위한 종합적인 인사 관리 솔루션�
 - `MemberDetailDialog` - **[개선됨]** 구성원 상세 보기
   - 모바일 최적화된 정보 레이아웃
   - 주간 스케줄 시각화
-- `TerminationFormDialog` - 퇴사 처리
-- `TerminatedMemberDetailDialog` - **[신규]** 퇴사자 상세 보기
-- `TerminationCancelDialog` - **[신규]** 퇴사 취소 다이얼로그
+- `TerminationFormDialog` - 퇴사 처리 다이얼로그
+- `TerminatedMemberDetailDialog` - **[신규 2025-08-14]** 퇴사자 상세 정보 다이얼로그
+  - 기본 정보 및 퇴사 정보 섹션 분리
+  - 근무 기간 자동 계산 기능
+  - Linear Light 테마 완전 적용
+- `TerminationCancelDialog` - **[신규 2025-08-14]** 퇴사 취소 확인 다이얼로그
+  - 퇴사 취소 시 주의사항 안내
+  - 취소 사유 필수 입력
+  - 모바일 최적화된 레이아웃
 - `LeaveRequestFormDialog` - 연차 신청
 - `LeaveApprovalDialog` - 연차 승인/반려
 - `AttendanceUploadDialog` - 근태 CSV 업로드
@@ -308,12 +318,15 @@ BTQ HR 시스템은 중소기업을 위한 종합적인 인사 관리 솔루션�
 - **주간 스케줄 미리보기**: 색상 토큰 기반 시각적 표현
 - **섹션 구분자**: `w-1 h-4 bg-[#5e6ad2] rounded-full` 인디케이터
 
-#### **네비게이션 시스템**
+#### **네비게이션 시스템** **[2025-08-14 일반직원 UX 개선]**
 - **모바일 Sheet**: 좌측에서 슬라이드하는 햄버거 메뉴 (`lg:hidden` 표시)
 - **데스크탑 사이드바**: 고정 사이드바 (`hidden lg:flex` 표시)
 - **권한 기반 필터링**: 사용자 역할(관리자/일반직원)에 따른 메뉴 자동 필터링
+- **일반직원 메뉴 간소화**: 하위 메뉴가 1개뿐인 경우 직접 링크로 변환
+  - 기존: "근무 관리" → "근무표 조회" (Collapsible)
+  - 개선: "근무표 조회" (직접 링크)
 - **사용자 정보**: 프로필 아이콘, 이름, 팀명, 역할 표시
-- **계층형 메뉴**: Collapsible 컴포넌트로 구성원 관리, 기본 설정 하위 메뉴
+- **계층형 메뉴**: Collapsible 컴포넌트로 구성원 관리, 기본 설정 하위 메뉴 (관리자 전용)
 - **브레이크포인트 통합**: lg:1024px 기준으로 사이드바/모바일 네비게이션 전환
 
 #### **Linear Light 테마 완성**
@@ -336,7 +349,7 @@ BTQ HR 시스템은 중소기업을 위한 종합적인 인사 관리 솔루션�
 
 ## 6. 데이터 저장소 모듈
 
-### Supabase Storage 모듈
+### Supabase Storage 모듈 (총 12개)
 - `supabase-auth-storage.ts` - 인증 관리
 - `supabase-member-storage.ts` - 구성원 데이터
 - `supabase-team-storage.ts` - 팀 데이터
@@ -346,7 +359,11 @@ BTQ HR 시스템은 중소기업을 위한 종합적인 인사 관리 솔루션�
 - `supabase-attendance-storage.ts` - 근태 기록
 - `supabase-work-mileage-storage.ts` - 근무 마일리지
 - `supabase-work-type-storage.ts` - 근무 유형
-- `supabase-termination-storage.ts` - 퇴사 관리
+- `supabase-termination-storage.ts` - **[강화 2025-08-14]** 퇴사/재입사 관리
+  - 활성/퇴사자 목록 조회
+  - 퇴사 처리 및 연차 자동 소멸
+  - 퇴사 취소 및 재입사 처리
+  - termination_logs 테이블 연동
 
 ## 7. 보안 및 권한
 
@@ -537,6 +554,23 @@ const leaveTypeColors = {
   - 반응형 2단 컬럼 레이아웃 최적화
   - 연차 유형별 색상 코딩된 Badge 시스템
   - 상태별 필터링 (모바일: 드롭다운, 데스크톱: 버튼)
+
+### v2.3.0 (2025-08-14) - 퇴사자 관리 시스템 완성 및 UX 개선
+- **퇴사자 관리 시스템 완성**:
+  - `TerminatedMemberDetailDialog` - 퇴사자 상세 정보 다이얼로그 신규 구현
+  - `TerminationCancelDialog` - 퇴사 취소 확인 다이얼로그 신규 구현
+  - 근무 기간 자동 계산 기능 (년/월/일 단위)
+  - 퇴사 취소 시 주의사항 안내 시스템
+- **일반직원용 메뉴 간소화**:
+  - 하위 메뉴가 1개뿐인 경우 Collapsible 제거하고 직접 링크로 변환
+  - "근무표 조회", "연차 신청", "나의 근태", "비밀번호 변경" 직접 접근
+  - `hideWhenAdmin` 속성으로 관리자/일반직원 메뉴 완전 분리
+- **대시보드 정보 최적화**:
+  - 일반직원 대시보드에서 팀명 표시 제거 (간소화)
+  - 시간대별 인사말 시스템 유지
+- **Linear Light 테마 완성도 향상**:
+  - 모든 새 컴포넌트에 일관된 브랜드 색상 적용
+  - 퇴사 관련 UI에 경고색 체계 적용
 
 ### v2.1.0 (2025-08-13) - Mobile-First Redesign
 - **모바일 우선 설계**: 모든 컴포넌트를 모바일 기준으로 재설계
